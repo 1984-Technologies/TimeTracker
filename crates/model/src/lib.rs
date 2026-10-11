@@ -52,6 +52,11 @@ pub enum EventKind {
     CollectorStopped,
     Heartbeat,
     Observation(ObservationKind),
+    AdapterStatus {
+        adapter_id: String,
+        observation_type: ObservationType,
+        status: AdapterStatus,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
