@@ -1,7 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::sync::Mutex;
-use tokio::sync::Notify;
 use timetracker_model::{Event, EventId};
+use tokio::sync::Notify;
 
 use crate::ClientError;
 
@@ -63,19 +63,19 @@ impl EventQueue {
         }
         let ids: HashSet<EventId> = _ids.iter().copied().collect();
         let mut queue = self.lock_queue()?;
-        queue.retain(|event| {!ids.contains(&event.id)});
+        queue.retain(|event| !ids.contains(&event.id));
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::sync::Arc;
     use std::time::Duration;
-    use uuid::Uuid;
     use time::OffsetDateTime;
     use timetracker_model::{DeviceId, EventKind};
-    use super::*;
+    use uuid::Uuid;
 
     fn make_event() -> Event {
         Event {
@@ -111,7 +111,10 @@ mod tests {
         queue.push(e2.clone()).await.unwrap();
         queue.push(e3.clone()).await.unwrap();
         let unknown_id = EventId(Uuid::new_v4());
-        queue.acknowledge(&[e1.id, e3.id, unknown_id]).await.unwrap();
+        queue
+            .acknowledge(&[e1.id, e3.id, unknown_id])
+            .await
+            .unwrap();
         let remaining = queue.pending(10).await.unwrap();
         assert_eq!(remaining, vec![e2]);
     }
@@ -121,7 +124,10 @@ mod tests {
         let queue = EventQueue::new();
         queue.push(make_event()).await.unwrap();
         let res = tokio::time::timeout(Duration::from_millis(100), queue.wait_for_events()).await;
-        assert!(res.is_ok(), "wait for events should not block when queue is already non-empty");
+        assert!(
+            res.is_ok(),
+            "wait for events should not block when queue is already non-empty"
+        );
     }
 
     #[tokio::test]
