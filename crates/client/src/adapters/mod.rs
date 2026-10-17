@@ -27,3 +27,12 @@ pub trait DesktopAdapter: Send {
         shutdown: watch::Receiver<bool>,
     ) -> Result<(), ClientError>;
 }
+
+#[cfg(target_os = "macos")]
+mod macos;
+
+#[cfg(target_os = "macos")]
+pub use macos::{
+    FocusedApplicationAdapter, IdleAdapter, KeyboardAdapter, MouseClickAdapter, MouseMoveAdapter,
+    default_macos_adapters,
+};
