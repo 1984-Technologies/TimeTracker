@@ -6,6 +6,7 @@ pub use postgres::{
 };
 
 use async_trait::async_trait;
+use time::OffsetDateTime;
 use timetracker_model::{DeviceId, Event, EventId, UserId};
 
 use crate::{
@@ -40,5 +41,15 @@ pub trait UserActionRepository: Send + Sync {
         &self,
         user_id: UserId,
         range: TimeRange,
+    ) -> Result<Vec<UserAction>, BackendError>;
+
+    /// Returns actions that occurred strictly before `before`.
+    /// These are needed to determine the state at the start of a time range.
+    /// The contract is: return at most `PRECEDING_ACTIONS_LIMIT` most recent actions before `before`,
+    /// ordered by occurred_at descending.
+    async fn preceding_actions(
+        &self,
+        user_id: UserId,
+        before: OffsetDateTime,
     ) -> Result<Vec<UserAction>, BackendError>;
 }
