@@ -21,7 +21,8 @@ fn read_env_var(name: &str) -> Result<String, BackendError> {
 
 fn read_socket_addr(name: &str) -> Result<SocketAddr, BackendError> {
     let var = read_env_var(name)?;
-    var.parse::<SocketAddr>().map_err(|e| format!("Invalid socket address in {name} ('{var}'): {e}").into())
+    var.parse::<SocketAddr>()
+        .map_err(|e| format!("Invalid socket address in {name} ('{var}'): {e}").into())
 }
 
 async fn wait_for_shutdown_signal(shutdown_tx: watch::Sender<bool>) {
@@ -68,7 +69,8 @@ async fn main() -> Result<(), BackendError> {
         let device_repo: PostgresDeviceRepository = todo!("Wait for backend-postgres constructors");
         let event_repo: PostgresEventRepository = todo!("Wait for backend-postgres constructors");
         let user_repo: PostgresUserRepository = todo!("Wait for backend-postgres constructors");
-        let action_repo: PostgresUserActionRepository = todo!("Wait for backend-postgres constructors");
+        let action_repo: PostgresUserActionRepository =
+            todo!("Wait for backend-postgres constructors");
 
         let device_repo: Arc<dyn DeviceRepository> = Arc::new(device_repo);
         let event_repo: Arc<dyn EventRepository> = Arc::new(event_repo);

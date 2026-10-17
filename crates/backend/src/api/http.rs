@@ -1,14 +1,14 @@
+use crate::BackendError;
+use crate::api::ApiServer;
+use crate::dashboard::DashboardService;
+use async_trait::async_trait;
+use axum::Router;
+use axum::http::StatusCode;
+use axum::routing::get;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use async_trait::async_trait;
-use axum::http::StatusCode;
-use axum::Router;
-use axum::routing::get;
 use tokio::net::TcpListener;
 use tokio::sync::watch::Receiver;
-use crate::api::ApiServer;
-use crate::BackendError;
-use crate::dashboard::DashboardService;
 
 pub struct HttpDashboardServer {
     pub(crate) dashboard: Arc<DashboardService>,
@@ -32,7 +32,11 @@ async fn health_check() -> StatusCode {
 
 #[async_trait]
 impl ApiServer for HttpDashboardServer {
-    async fn serve(&self, address: SocketAddr, mut shutdown: Receiver<bool>) -> Result<(), BackendError> {
+    async fn serve(
+        &self,
+        address: SocketAddr,
+        mut shutdown: Receiver<bool>,
+    ) -> Result<(), BackendError> {
         let app = self.router();
 
         let listener = TcpListener::bind(address).await?;
@@ -53,25 +57,33 @@ impl ApiServer for HttpDashboardServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dashboard::{TimeRange, UserAction, UserSummary};
+    use crate::repositories::{UserActionRepository, UserRepository};
     use std::time::Duration;
+    use timetracker_model::UserId;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpStream;
     use tokio::sync::watch;
-    use timetracker_model::UserId;
-    use crate::dashboard::{TimeRange, UserAction, UserSummary};
-    use crate::repositories::{UserActionRepository, UserRepository};
 
     struct DummyUserRepo;
     #[async_trait]
     impl UserRepository for DummyUserRepo {
-        async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> { Ok(vec![]) }
-        async fn find_user(&self, _id: UserId) -> Result<Option<UserSummary>, BackendError> { Ok(None) }
+        async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> {
+            Ok(vec![])
+        }
+        async fn find_user(&self, _id: UserId) -> Result<Option<UserSummary>, BackendError> {
+            Ok(None)
+        }
     }
 
     struct DummyActionRepo;
     #[async_trait]
     impl UserActionRepository for DummyActionRepo {
-        async fn user_actions(&self, _id: UserId, _range: TimeRange) -> Result<Vec<UserAction>, BackendError> {
+        async fn user_actions(
+            &self,
+            _id: UserId,
+            _range: TimeRange,
+        ) -> Result<Vec<UserAction>, BackendError> {
             Ok(vec![])
         }
     }
@@ -90,9 +102,7 @@ mod tests {
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-        let server_handle = tokio::spawn(async move {
-            server.serve(addr, shutdown_rx).await
-        });
+        let server_handle = tokio::spawn(async move { server.serve(addr, shutdown_rx).await });
 
         tokio::time::sleep(Duration::from_millis(20)).await;
 
