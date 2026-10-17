@@ -5,6 +5,12 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+time.workspace = true
 timetracker-model = { path = "../model" }
 tokio.workspace = true
 uuid.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+active-win-pos-rs = "0.11"
+powerwatch = "0.1"
+rdev = "0.5"
