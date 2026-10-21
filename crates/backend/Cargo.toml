@@ -11,3 +11,4 @@ sqlx = { workspace = true, features = ["postgres"] }
 timetracker-model = { path = "../model" }
 time.workspace = true
 tokio.workspace = true
+tower-http = { version = "0.6", features = ["cors", "trace"] }
