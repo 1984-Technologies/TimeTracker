@@ -24,10 +24,10 @@ impl EventQueue {
             .map_err(|e| format!("Event queue lock poisoned: {}", e).into())
     }
 
-    pub async fn push(&self, _event: Event) -> Result<(), ClientError> {
+    pub async fn push(&self, event: Event) -> Result<(), ClientError> {
         {
             let mut queue = self.lock_queue()?;
-            queue.push_back(_event);
+            queue.push_back(event);
         }
         self.notify.notify_one();
         Ok(())
@@ -48,23 +48,29 @@ impl EventQueue {
         }
     }
 
-    pub async fn pending(&self, _limit: usize) -> Result<Vec<Event>, ClientError> {
-        if _limit == 0 {
+    pub async fn pending(&self, limit: usize) -> Result<Vec<Event>, ClientError> {
+        if limit == 0 {
             return Ok(Vec::new());
         }
         let queue = self.lock_queue()?;
-        let events = queue.iter().take(_limit).cloned().collect();
+        let events = queue.iter().take(limit).cloned().collect();
         Ok(events)
     }
 
-    pub async fn acknowledge(&self, _ids: &[EventId]) -> Result<(), ClientError> {
-        if _ids.is_empty() {
+    pub async fn acknowledge(&self, ids: &[EventId]) -> Result<(), ClientError> {
+        if ids.is_empty() {
             return Ok(());
         }
-        let ids: HashSet<EventId> = _ids.iter().copied().collect();
+        let id_set: HashSet<EventId> = ids.iter().copied().collect();
         let mut queue = self.lock_queue()?;
-        queue.retain(|event| !ids.contains(&event.id));
+        queue.retain(|event| !id_set.contains(&event.id));
         Ok(())
+    }
+}
+
+impl Default for EventQueue {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -136,10 +142,21 @@ mod tests {
         let queue_clone = Arc::clone(&queue);
         let waiter = tokio::spawn(async move {
             queue_clone.wait_for_events().await.unwrap();
+            let pending = queue_clone.pending(1).await.unwrap();
+            !pending.is_empty()
         });
         tokio::time::sleep(Duration::from_millis(20)).await;
+
+        assert!(
+            !waiter.is_finished(),
+            "Consumer should still be waiting before event is pushed"
+        );
         queue.push(make_event()).await.unwrap();
         let res = tokio::time::timeout(Duration::from_millis(100), waiter).await;
         assert!(res.is_ok(), "Consumer task was not woken up by push()");
+        assert!(
+            res.unwrap().unwrap(),
+            "Queue should not be empty when consumer wakes up"
+        );
     }
 }
