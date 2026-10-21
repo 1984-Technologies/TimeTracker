@@ -13,4 +13,7 @@
 
 # Unique selling proposition
 
-Task-aware monitoring — local classification of the screen content and estimation of it's relevance to the current task
+Task-aware monitoring: local classification of the screen content and estimation of its relevance to the current task.
+
+We are going to test [EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2), as well as other small encoders that can be efficiently inferred on a CPU. 
+The resulting embedding vectors will then be used for classification, clustering and other analyses
