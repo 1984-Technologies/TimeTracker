@@ -10,4 +10,4 @@ serde_json.workspace = true
 sqlx = { workspace = true, features = ["postgres"] }
 timetracker-model = { path = "../model" }
 time.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["signal"] }
