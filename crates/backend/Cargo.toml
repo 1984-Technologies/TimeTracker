@@ -11,3 +11,8 @@ sqlx = { workspace = true, features = ["postgres"] }
 timetracker-model = { path = "../model" }
 time.workspace = true
 tokio.workspace = true
+tonic = "0.12.3"
+uuid = { version = "1.26.1", features = ["v4"] }
+prost = "0.13.5"
+[build-dependencies]
+tonic-build = { version = "0.12.3", features = ["prost"] }
