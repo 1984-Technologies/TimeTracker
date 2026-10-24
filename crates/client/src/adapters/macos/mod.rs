@@ -52,9 +52,15 @@ pub(super) fn shutdown_requested(shutdown: &watch::Receiver<bool>) -> bool {
     *shutdown.borrow()
 }
 
-pub fn default_adapters() -> Vec<Box<dyn super::DesktopAdapter>> {
+pub fn default_adapters(
+    focused_application_events: mpsc::UnboundedReceiver<String>,
+    initial_app_id: Option<String>,
+) -> Vec<Box<dyn super::DesktopAdapter>> {
     vec![
-        Box::new(FocusedApplicationAdapter::new()),
+        Box::new(FocusedApplicationAdapter::new(
+            focused_application_events,
+            initial_app_id,
+        )),
         Box::new(IdleAdapter::default()),
         Box::new(KeyboardAdapter::new()),
         Box::new(MouseClickAdapter::new()),
@@ -68,7 +74,8 @@ mod tests {
     use super::*;
 
     fn adapters() -> Vec<Box<dyn DesktopAdapter>> {
-        default_adapters()
+        let (_events_tx, events_rx) = mpsc::unbounded_channel();
+        default_adapters(events_rx, None)
     }
 
     #[test]
