@@ -29,10 +29,7 @@ pub trait DesktopAdapter: Send {
 }
 
 #[cfg(target_os = "macos")]
-mod macos;
+pub mod macos;
 
 #[cfg(target_os = "macos")]
-pub use macos::{
-    FocusedApplicationAdapter, IdleAdapter, KeyboardAdapter, MouseClickAdapter, MouseMoveAdapter,
-    default_macos_adapters,
-};
+pub use macos::default_adapters;
