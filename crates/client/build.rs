@@ -1,10 +1,5 @@
-use protobuf_codegen::CodeGen;
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    CodeGen::new()
-        .include("proto")
-        .inputs(["upload_client.proto"])
-        .output_dir("generated")
-        .generate_and_compile()?;
+    println!("cargo:rerun-if-changed=../backend/proto/metrics.proto");
+    tonic_build::compile_protos("../backend/proto/metrics.proto")?;
     Ok(())
 }

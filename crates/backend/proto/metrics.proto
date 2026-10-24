@@ -53,5 +53,6 @@ message EventMessage {
     bool mouse_clicked = 10;
     bool mouse_moved = 11;
     AdapterStatusMessage adapter_status = 12;
+    bool system_sleep_changed = 13;
   }
 }

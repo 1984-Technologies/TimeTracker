@@ -8,12 +8,11 @@ async-trait.workspace = true
 axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sqlx = { workspace = true, features = ["postgres"] }
 timetracker-model = { path = "../model" }
 time.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 tonic = "0.12.3"
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
 uuid = { version = "1.26.1", features = ["v4"] }
 prost = "0.13.5"
 

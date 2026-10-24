@@ -61,18 +61,18 @@ impl CollectionSupervisor {
                     })
                     .await;
 
-                if status == AdapterStatus::Available {
-                    if let Err(error) = adapter.run(task_output.clone(), task_shutdown).await {
-                        let _ = task_output
-                            .send(AdapterOutput::Status {
-                                adapter_id,
-                                observation_type,
-                                status: AdapterStatus::Unavailable {
-                                    reason: format!("adapter run failed: {error}"),
-                                },
-                            })
-                            .await;
-                    }
+                if status == AdapterStatus::Available
+                    && let Err(error) = adapter.run(task_output.clone(), task_shutdown).await
+                {
+                    let _ = task_output
+                        .send(AdapterOutput::Status {
+                            adapter_id,
+                            observation_type,
+                            status: AdapterStatus::Unavailable {
+                                reason: format!("adapter run failed: {error}"),
+                            },
+                        })
+                        .await;
                 }
 
                 (index, adapter)

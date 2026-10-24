@@ -25,6 +25,10 @@ export type UserActionKind =
         title: string | null;
       };
     }
+  | { KeyboardButtonPressed: { key: string } }
+  | { MouseClicked: { button: string; x: number | null; y: number | null } }
+  | { MouseMoved: { x: number; y: number } }
+  | { SystemSleepChanged: { sleeping: boolean } }
   | {
       AdapterStatus: {
         adapter_id: string;

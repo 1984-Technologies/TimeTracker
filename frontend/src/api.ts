@@ -24,14 +24,21 @@ export interface ActionsQuery {
   end: string;
 }
 
+interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export function getUserActions(
   userId: string,
   query: ActionsQuery,
   signal?: AbortSignal,
 ): Promise<UserAction[]> {
   const params = new URLSearchParams({ start: query.start, end: query.end });
-  return request<UserAction[]>(
+  return request<PaginatedResponse<UserAction>>(
     `/users/${encodeURIComponent(userId)}/actions?${params.toString()}`,
     signal,
-  );
+  ).then((response) => response.items);
 }

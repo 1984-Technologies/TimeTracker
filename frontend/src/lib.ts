@@ -36,6 +36,26 @@ export function presentActionKind(kind: UserActionKind): KindPresentation {
       tone: "slate",
     };
   }
+  if ("KeyboardButtonPressed" in kind) {
+    return { label: "Keyboard", detail: kind.KeyboardButtonPressed.key, tone: "slate" };
+  }
+  if ("MouseClicked" in kind) {
+    return { label: "Mouse click", detail: kind.MouseClicked.button, tone: "slate" };
+  }
+  if ("MouseMoved" in kind) {
+    return {
+      label: "Mouse moved",
+      detail: `${kind.MouseMoved.x}, ${kind.MouseMoved.y}`,
+      tone: "slate",
+    };
+  }
+  if ("SystemSleepChanged" in kind) {
+    return {
+      label: kind.SystemSleepChanged.sleeping ? "Sleeping" : "Awake",
+      detail: "System power state changed",
+      tone: kind.SystemSleepChanged.sleeping ? "amber" : "green",
+    };
+  }
 
   const adapter = kind.AdapterStatus;
   return {

@@ -21,9 +21,7 @@ pub struct TimeRange {
 impl TimeRange {
     pub fn validate(&self) -> Result<(), BackendError> {
         if self.start > self.end {
-            return Err(BackendError::Validation(
-                "start must be <= end".to_string(),
-            ));
+            return Err(BackendError::Validation("start must be <= end".to_string()));
         }
         Ok(())
     }
@@ -47,6 +45,21 @@ pub enum UserActionKind {
         app_id: String,
         title: Option<String>,
     },
+    KeyboardButtonPressed {
+        key: String,
+    },
+    MouseClicked {
+        button: String,
+        x: Option<i32>,
+        y: Option<i32>,
+    },
+    MouseMoved {
+        x: i32,
+        y: i32,
+    },
+    SystemSleepChanged {
+        sleeping: bool,
+    },
     AdapterStatus {
         adapter_id: String,
         observation_type: ObservationType,
@@ -58,6 +71,7 @@ pub enum UserActionKind {
 pub struct UserAction {
     pub id: EventId,
     pub device_id: DeviceId,
+    #[serde(with = "time::serde::rfc3339")]
     pub occurred_at: OffsetDateTime,
     pub kind: UserActionKind,
 }
@@ -83,7 +97,7 @@ impl DashboardService {
     ) -> Result<Vec<UserAction>, BackendError> {
         range.validate()?;
 
-        let mut actions = self.actions.user_actions(user_id, range.clone()).await?;
+        let mut actions = self.actions.user_actions(user_id, range).await?;
 
         let preceding = self.actions.preceding_actions(user_id, range.start).await?;
 
@@ -137,10 +151,7 @@ mod tests {
     #[test]
     fn time_range_validation_accepts_equal_range() {
         let ts = OffsetDateTime::from_unix_timestamp(50).unwrap();
-        let range = TimeRange {
-            start: ts,
-            end: ts,
-        };
+        let range = TimeRange { start: ts, end: ts };
         assert!(range.validate().is_ok());
     }
 
@@ -199,17 +210,17 @@ mod tests {
             preceding: vec![preceding, action3.clone()],
         };
 
-        let service = DashboardService::new(
-            Arc::new(MockUserRepository),
-            Arc::new(repo),
-        );
+        let service = DashboardService::new(Arc::new(MockUserRepository), Arc::new(repo));
 
         let range = TimeRange {
             start: OffsetDateTime::from_unix_timestamp(15).unwrap(),
             end: OffsetDateTime::from_unix_timestamp(40).unwrap(),
         };
 
-        let result = service.user_actions(UserId(Uuid::new_v4()), range).await.unwrap();
+        let result = service
+            .user_actions(UserId(Uuid::new_v4()), range)
+            .await
+            .unwrap();
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].id, action1.id);
@@ -232,17 +243,17 @@ mod tests {
             preceding: vec![action2.clone()],
         };
 
-        let service = DashboardService::new(
-            Arc::new(MockUserRepository),
-            Arc::new(repo),
-        );
+        let service = DashboardService::new(Arc::new(MockUserRepository), Arc::new(repo));
 
         let range = TimeRange {
             start: OffsetDateTime::from_unix_timestamp(5).unwrap(),
             end: OffsetDateTime::from_unix_timestamp(40).unwrap(),
         };
 
-        let result = service.user_actions(UserId(Uuid::new_v4()), range).await.unwrap();
+        let result = service
+            .user_actions(UserId(Uuid::new_v4()), range)
+            .await
+            .unwrap();
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].occurred_at, ts2);
@@ -284,17 +295,17 @@ mod tests {
             preceding: vec![action1.clone()],
         };
 
-        let service = DashboardService::new(
-            Arc::new(MockUserRepository),
-            Arc::new(repo),
-        );
+        let service = DashboardService::new(Arc::new(MockUserRepository), Arc::new(repo));
 
         let range = TimeRange {
             start: OffsetDateTime::from_unix_timestamp(15).unwrap(),
             end: OffsetDateTime::from_unix_timestamp(40).unwrap(),
         };
 
-        let result = service.user_actions(UserId(Uuid::new_v4()), range).await.unwrap();
+        let result = service
+            .user_actions(UserId(Uuid::new_v4()), range)
+            .await
+            .unwrap();
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].id, action1.id);
@@ -305,5 +316,15 @@ mod tests {
     #[test]
     fn test_preceding_actions_limit_constant() {
         assert_eq!(PRECEDING_ACTIONS_LIMIT, 10);
+    }
+
+    #[test]
+    fn user_action_timestamp_is_rfc3339_json() {
+        let action = create_test_action(
+            Uuid::new_v4(),
+            OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
+        );
+        let json = serde_json::to_value(action).unwrap();
+        assert_eq!(json["occurred_at"], "2023-11-14T22:13:20Z");
     }
 }

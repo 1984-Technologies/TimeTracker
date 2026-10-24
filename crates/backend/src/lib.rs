@@ -21,3 +21,15 @@ impl std::fmt::Display for BackendError {
 }
 
 impl std::error::Error for BackendError {}
+
+impl From<std::io::Error> for BackendError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Internal(error.to_string())
+    }
+}
+
+impl From<tonic::transport::Error> for BackendError {
+    fn from(error: tonic::transport::Error) -> Self {
+        Self::Internal(error.to_string())
+    }
+}

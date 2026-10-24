@@ -1,7 +1,5 @@
-use sqlx::postgres::PgPoolOptions;
-use std::env;
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::{env, net::SocketAddr, path::PathBuf, sync::Arc};
+
 use tokio::sync::watch;
 
 use timetracker_backend::{
@@ -10,25 +8,23 @@ use timetracker_backend::{
     collection::MetricsCollectionService,
     dashboard::DashboardService,
     repositories::{
-        DeviceRepository, EventRepository, PostgresDeviceRepository, PostgresEventRepository,
-        PostgresUserActionRepository, PostgresUserRepository, UserActionRepository, UserRepository,
+        DeviceRepository, EventRepository, InMemoryRepository, UserActionRepository, UserRepository,
     },
 };
 
-fn read_env_var(name: &str) -> Result<String, BackendError> {
-    env::var(name).map_err(|e| format!("Failed to read enviroment variable {name}: {e}").into())
-}
-
-fn read_socket_addr(name: &str) -> Result<SocketAddr, BackendError> {
-    let var = read_env_var(name)?;
-    var.parse::<SocketAddr>()
-        .map_err(|e| format!("Invalid socket address in {name} ('{var}'): {e}").into())
+fn socket_addr(name: &str, default: &str) -> Result<SocketAddr, BackendError> {
+    let value = env::var(name).unwrap_or_else(|_| default.to_owned());
+    value.parse().map_err(|error| {
+        BackendError::Validation(format!(
+            "invalid socket address in {name} ('{value}'): {error}"
+        ))
+    })
 }
 
 async fn wait_for_shutdown_signal(shutdown_tx: watch::Sender<bool>) {
     let ctrl_c = async {
-        if let Err(e) = tokio::signal::ctrl_c().await {
-            eprintln!("Failed to listen for Ctrl+C signal: {e}");
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            eprintln!("failed to listen for Ctrl+C: {error}");
         }
     };
     #[cfg(unix)]
@@ -37,10 +33,9 @@ async fn wait_for_shutdown_signal(shutdown_tx: watch::Sender<bool>) {
             Ok(mut signal) => {
                 signal.recv().await;
             }
-            Err(e) => eprintln!("Failed to listen for SIGTERM signal: {e}"),
+            Err(error) => eprintln!("failed to listen for SIGTERM: {error}"),
         }
     };
-
     #[cfg(not(unix))]
     let terminate = std::future::pending::<()>();
 
@@ -48,61 +43,39 @@ async fn wait_for_shutdown_signal(shutdown_tx: watch::Sender<bool>) {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
-
     let _ = shutdown_tx.send(true);
 }
 
 #[tokio::main]
 async fn main() -> Result<(), BackendError> {
-    let database_url = read_env_var("DATABASE_URL")?;
-    let grpc_bind_addr = read_socket_addr("GRPC_BIND_ADDR")?;
-    let http_bind_addr = read_socket_addr("HTTP_BIND_ADDR")?;
+    let grpc_bind_addr = socket_addr("GRPC_BIND_ADDR", "0.0.0.0:50051")?;
+    let http_bind_addr = socket_addr("HTTP_BIND_ADDR", "0.0.0.0:8080")?;
 
-    let _db_pool = PgPoolOptions::new()
-        .max_connections(10)
-        .connect(&database_url)
-        .await
-        .map_err(|e| format!("Failed to connect to PostgreSQL: {e}"))?;
+    let repository = Arc::new(InMemoryRepository::new());
+    let devices: Arc<dyn DeviceRepository> = repository.clone();
+    let events: Arc<dyn EventRepository> = repository.clone();
+    let users: Arc<dyn UserRepository> = repository.clone();
+    let actions: Arc<dyn UserActionRepository> = repository;
 
-    #[allow(unreachable_code)]
-    let (device_repository, event_repository, user_repository, user_action_repository) = {
-        let device_repo: PostgresDeviceRepository = todo!("Wait for backend-postgres constructors");
-        let event_repo: PostgresEventRepository = todo!("Wait for backend-postgres constructors");
-        let user_repo: PostgresUserRepository = todo!("Wait for backend-postgres constructors");
-        let action_repo: PostgresUserActionRepository =
-            todo!("Wait for backend-postgres constructors");
-
-        let device_repo: Arc<dyn DeviceRepository> = Arc::new(device_repo);
-        let event_repo: Arc<dyn EventRepository> = Arc::new(event_repo);
-        let user_repo: Arc<dyn UserRepository> = Arc::new(user_repo);
-        let action_repo: Arc<dyn UserActionRepository> = Arc::new(action_repo);
-
-        (device_repo, event_repo, user_repo, action_repo)
-    };
-
-    let collection_service = Arc::new(MetricsCollectionService::new(
-        device_repository,
-        event_repository,
-    ));
-    let dashboard_service = Arc::new(DashboardService::new(
-        user_repository,
-        user_action_repository,
-    ));
-
-    let grpc_server = GrpcMetricsServer::new(collection_service);
-    let http_server = HttpDashboardServer::new(dashboard_service);
-
+    let grpc_server =
+        GrpcMetricsServer::new(Arc::new(MetricsCollectionService::new(devices, events)));
+    let static_dir =
+        PathBuf::from(env::var("STATIC_DIR").unwrap_or_else(|_| "/app/frontend".into()));
+    let mut http_server = HttpDashboardServer::new(Arc::new(DashboardService::new(users, actions)));
+    if static_dir.is_dir() {
+        http_server = http_server.with_static_dir(static_dir);
+    }
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-
     tokio::spawn(wait_for_shutdown_signal(shutdown_tx.clone()));
 
-    let grpc_future = grpc_server.serve(grpc_bind_addr, shutdown_rx.clone());
-    let http_future = http_server.serve(http_bind_addr, shutdown_rx);
+    println!("dashboard listening on http://{http_bind_addr}");
+    println!("client ingestion listening on {grpc_bind_addr}");
 
-    let result = tokio::try_join!(grpc_future, http_future);
-
+    let result = tokio::try_join!(
+        grpc_server.serve(grpc_bind_addr, shutdown_rx.clone()),
+        http_server.serve(http_bind_addr, shutdown_rx),
+    );
     let _ = shutdown_tx.send(true);
     result?;
-
     Ok(())
 }

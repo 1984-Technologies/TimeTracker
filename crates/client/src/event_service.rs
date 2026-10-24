@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use timetracker_model::{DeviceId, EventKind, Event, EventId};
-use tokio::sync::{mpsc, watch};
 use time::OffsetDateTime;
+use timetracker_model::{DeviceId, Event, EventId, EventKind};
+use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
 
 use crate::{ClientError, adapters::AdapterOutput, queue::EventQueue, upload::GrpcUploadClient};
@@ -30,65 +30,58 @@ impl ClientEventService {
     }
 
     pub async fn record_outputs(
-        &mut self,
-        mut _outputs: mpsc::Receiver<AdapterOutput>,
+        &self,
+        mut outputs: mpsc::Receiver<AdapterOutput>,
     ) -> Result<(), ClientError> {
-        let adapter_output = _outputs.recv().await;
-        match adapter_output {
-            None => Ok(()),
-            Some(AdapterOutput::Observation(observation)) => {
-                let event_id = EventId(Uuid::new_v4());
-                let timestamp = OffsetDateTime::now_utc();
-                Arc::make_mut(&mut self.queue).push(
-                    Event {
-                        id: event_id,
-                        device_id: self.device_id,
-                        occurred_at: timestamp,
-                        kind: EventKind::Observation(observation.kind)
-                    }
-                ).await
-            },
-            Some(AdapterOutput::Status {
-                adapter_id,
-                observation_type,
-                status
-            }) => {
-                let event_id = EventId(Uuid::new_v4());
-                let timestamp = OffsetDateTime::now_utc();
-                Arc::make_mut(&mut self.queue).push(
-                    Event {
-                        id: event_id,
-                        device_id: self.device_id,
-                        occurred_at: timestamp,
-                        kind: EventKind::AdapterStatus {
-                            adapter_id: adapter_id.to_string(),
-                            observation_type: observation_type,
-                            status: status
-                        }
-                    }
-                ).await
-            }
+        while let Some(adapter_output) = outputs.recv().await {
+            let kind = match adapter_output {
+                AdapterOutput::Observation(observation) => EventKind::Observation(observation.kind),
+                AdapterOutput::Status {
+                    adapter_id,
+                    observation_type,
+                    status,
+                } => EventKind::AdapterStatus {
+                    adapter_id: adapter_id.to_owned(),
+                    observation_type,
+                    status,
+                },
+            };
+            self.enqueue_kind(kind).await?;
         }
+        Ok(())
     }
 
-    pub async fn enqueue_kind(&mut self, _kind: EventKind) -> Result<(), ClientError> {
-        Arc::make_mut(&mut self.queue).push(
-            Event {
+    pub async fn enqueue_kind(&self, kind: EventKind) -> Result<(), ClientError> {
+        self.queue
+            .push(Event {
                 id: EventId(Uuid::new_v4()),
                 device_id: self.device_id,
                 occurred_at: OffsetDateTime::now_utc(),
-                kind: _kind
-            }
-        ).await
+                kind,
+            })
+            .await
     }
 
-    pub async fn upload_loop(&mut self, _shutdown: watch::Receiver<bool>) -> Result<(), ClientError> {
-        while !*_shutdown.borrow() {
-            self.queue.wait_for_events().await?;
+    pub async fn upload_loop(
+        &mut self,
+        mut shutdown: watch::Receiver<bool>,
+    ) -> Result<(), ClientError> {
+        loop {
+            if *shutdown.borrow() {
+                return Ok(());
+            }
+            tokio::select! {
+                result = self.queue.wait_for_events() => result?,
+                result = shutdown.changed() => {
+                    if result.is_err() || *shutdown.borrow() {
+                        return Ok(());
+                    }
+                    continue;
+                }
+            }
             let events = self.queue.pending(Self::LIMIT).await?;
             let event_ids = self.upload_client.send(self.device_id, &events).await?;
-            Arc::make_mut(&mut self.queue).acknowledge(&event_ids).await?;
+            self.queue.acknowledge(&event_ids).await?;
         }
-        Ok(())
     }
 }

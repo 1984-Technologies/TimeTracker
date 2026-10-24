@@ -1,9 +1,6 @@
-mod postgres;
+mod in_memory;
 
-pub use postgres::{
-    PostgresDeviceRepository, PostgresEventRepository, PostgresUserActionRepository,
-    PostgresUserRepository,
-};
+pub use in_memory::InMemoryRepository;
 
 use async_trait::async_trait;
 use time::OffsetDateTime;

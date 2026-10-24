@@ -9,9 +9,8 @@ time.workspace = true
 timetracker-model = { path = "../model" }
 tokio.workspace = true
 uuid.workspace = true
-protobuf = "4.34.0-release"
-grpc = "0.9.0"
-grpc-protobuf = "0.9.0"
+prost = "0.13.5"
+tonic = "0.12.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 active-win-pos-rs = "0.11"
@@ -19,4 +18,4 @@ powerwatch = "0.1"
 rdev = "0.5"
 
 [build-dependencies]
-protobuf-codegen = "4.34.0-release"
+tonic-build = { version = "0.12.3", features = ["prost"] }

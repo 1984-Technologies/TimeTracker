@@ -1,33 +1,44 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::get,
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tokio::sync::watch;
 use timetracker_model::UserId;
+use tokio::sync::watch;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use crate::{
+    BackendError,
     api::ApiServer,
     dashboard::{DashboardService, TimeRange},
-    BackendError,
 };
 
 pub struct HttpDashboardServer {
     pub(crate) dashboard: Arc<DashboardService>,
+    static_dir: Option<PathBuf>,
 }
 
 impl HttpDashboardServer {
     pub fn new(dashboard: Arc<DashboardService>) -> Self {
-        Self { dashboard }
+        Self {
+            dashboard,
+            static_dir: None,
+        }
+    }
+
+    pub fn with_static_dir(mut self, static_dir: impl Into<PathBuf>) -> Self {
+        self.static_dir = Some(static_dir.into());
+        self
     }
 
     pub fn router(&self) -> Router {
@@ -36,13 +47,22 @@ impl HttpDashboardServer {
             .allow_methods(Any)
             .allow_headers(Any);
 
-        Router::new()
+        let app = Router::new()
             .route("/health", get(health_check))
             .route("/users", get(list_users))
             .route("/users/{id}/actions", get(user_actions))
             .layer(TraceLayer::new_for_http())
             .layer(cors)
-            .with_state(Arc::clone(&self.dashboard))
+            .with_state(Arc::clone(&self.dashboard));
+
+        if let Some(static_dir) = &self.static_dir {
+            app.fallback_service(
+                ServeDir::new(static_dir)
+                    .not_found_service(ServeFile::new(static_dir.join("index.html"))),
+            )
+        } else {
+            app
+        }
     }
 }
 
@@ -52,8 +72,8 @@ async fn health_check() -> StatusCode {
 
 #[derive(Debug, Deserialize)]
 struct ActionsQuery {
-    start: OffsetDateTime,
-    end: OffsetDateTime,
+    start: String,
+    end: String,
     #[serde(default = "default_limit")]
     limit: u32,
     #[serde(default)]
@@ -90,9 +110,7 @@ impl IntoResponse for HttpError {
                 };
                 (status, e.to_string()).into_response()
             }
-            HttpError::BadRequest(msg) => {
-                (StatusCode::BAD_REQUEST, msg).into_response()
-            }
+            HttpError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
         }
     }
 }
@@ -122,9 +140,13 @@ async fn user_actions(
         )));
     }
 
+    let parse_timestamp = |value: &str, name: &str| {
+        OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
+            .map_err(|error| HttpError::BadRequest(format!("invalid {name} timestamp: {error}")))
+    };
     let range = TimeRange {
-        start: query.start,
-        end: query.end,
+        start: parse_timestamp(&query.start, "start")?,
+        end: parse_timestamp(&query.end, "end")?,
     };
 
     let actions = dashboard.user_actions(user_id, range).await?;
@@ -229,7 +251,12 @@ mod tests {
             .with_state(create_test_dashboard());
 
         let response = app
-            .oneshot(Request::builder().uri("/users").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/users")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -247,8 +274,11 @@ mod tests {
         let uri = format!(
             "/users/{}/actions?start={}&end={}",
             Uuid::new_v4(),
-            start.format(&time::format_description::well_known::Rfc3339).unwrap(),
-            end.format(&time::format_description::well_known::Rfc3339).unwrap(),
+            start
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
+            end.format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
         );
 
         let response = app
@@ -270,8 +300,11 @@ mod tests {
         let uri = format!(
             "/users/{}/actions?start={}&end={}",
             Uuid::new_v4(),
-            start.format(&time::format_description::well_known::Rfc3339).unwrap(),
-            end.format(&time::format_description::well_known::Rfc3339).unwrap(),
+            start
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
+            end.format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
         );
 
         let response = app
@@ -293,8 +326,11 @@ mod tests {
         let uri = format!(
             "/users/{}/actions?start={}&end={}&limit=0",
             Uuid::new_v4(),
-            start.format(&time::format_description::well_known::Rfc3339).unwrap(),
-            end.format(&time::format_description::well_known::Rfc3339).unwrap(),
+            start
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
+            end.format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
         );
 
         let response = app
@@ -316,8 +352,11 @@ mod tests {
         let uri = format!(
             "/users/{}/actions?start={}&end={}&limit=1001",
             Uuid::new_v4(),
-            start.format(&time::format_description::well_known::Rfc3339).unwrap(),
-            end.format(&time::format_description::well_known::Rfc3339).unwrap(),
+            start
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
+            end.format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
         );
 
         let response = app

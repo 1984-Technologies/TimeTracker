@@ -56,17 +56,19 @@ impl MetricsCollectionService {
     ) -> Result<CollectionReceipt, BackendError> {
         for event in events {
             if event.device_id != device_id {
-                return Err(Box::new(CollectionError::DeviceMismatch {
-                    batch_device_id: device_id,
-                    event_device_id: event.device_id,
-                }));
+                return Err(BackendError::Validation(
+                    CollectionError::DeviceMismatch {
+                        batch_device_id: device_id,
+                        event_device_id: event.device_id,
+                    }
+                    .to_string(),
+                ));
             }
         }
 
-        let user_id =
-            self.devices.owner_of(device_id).await?.ok_or_else(|| {
-                Box::new(CollectionError::UnknownDevice(device_id)) as BackendError
-            })?;
+        let user_id = self.devices.owner_of(device_id).await?.ok_or_else(|| {
+            BackendError::NotFound(CollectionError::UnknownDevice(device_id).to_string())
+        })?;
 
         if events.is_empty() {
             return Ok(CollectionReceipt {
@@ -149,7 +151,10 @@ mod tests {
         let e1 = make_event(device_id);
         let e2 = make_event(device_id);
 
-        let receipt1 = service.collect(device_id, &[e1.clone()]).await.unwrap();
+        let receipt1 = service
+            .collect(device_id, std::slice::from_ref(&e1))
+            .await
+            .unwrap();
         assert_eq!(receipt1.accepted, vec![e1.id]);
 
         let receipt2 = service

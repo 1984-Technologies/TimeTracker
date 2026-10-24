@@ -1,159 +1,126 @@
-use protobuf::proto;
+use std::io;
 
-mod protos {
-    include!("../generated/generated.rs");
-}
-
-use std::sync::Arc;
-use uuid::Uuid;
-use grpc::client::Channel;
-use grpc::client::ChannelOptions;
-use grpc::credentials::LocalChannelCredentials;
-use grpc_protobuf::UnaryCallBuilder;
-
-use timetracker_model::{DeviceId, Event, EventId};
+use timetracker_model::{
+    AdapterStatus, DeviceId, Event, EventId, EventKind, ObservationKind, ObservationType,
+};
+use tonic::transport::Channel;
 
 use crate::ClientError;
 
+pub mod proto {
+    tonic::include_proto!("timetracker.metrics");
+}
+
+use proto::{
+    AdapterStatusMessage, EventMessage, FocusedApplicationChangedMessage, ObservationTypeProto,
+    UploadEventsRequest, adapter_status_message,
+    client_metrics_uploader_client::ClientMetricsUploaderClient, event_message,
+};
+
 pub struct GrpcUploadClient {
-    channel: Channel
+    client: ClientMetricsUploaderClient<Channel>,
 }
 
 impl GrpcUploadClient {
-    pub fn new(address: String) -> GrpcUploadClient {
-        GrpcUploadClient {
-            channel:
-                Channel::new(
-                    address,
-                    Arc::new(LocalChannelCredentials::new()),
-                    ChannelOptions::default()
-                )
-        }
+    pub async fn connect(address: impl Into<String>) -> Result<Self, ClientError> {
+        let client = ClientMetricsUploaderClient::connect(address.into()).await?;
+        Ok(Self { client })
     }
 
     pub async fn send(
-        &self,
-        _device_id: DeviceId,
-        _events: &[Event],
+        &mut self,
+        device_id: DeviceId,
+        events: &[Event],
     ) -> Result<Vec<EventId>, ClientError> {
-    let mut res = Vec::new();        
-        for event in _events {
-            let (event_id_hi, event_id_lo) = event.id.0.as_u64_pair();
-            let id = proto!(protos::Uuid {
-                hi: event_id_hi,
-                lo: event_id_lo
-            });
-            let (device_id_hi, device_id_lo) = event.device_id.0.as_u64_pair();
-            let device_id = proto!(protos::Uuid {
-                hi: device_id_hi,
-                lo: device_id_lo
-            });
-            let occurred_at = event.occurred_at.unix_timestamp();
+        let events = events
+            .iter()
+            .map(to_proto_event)
+            .collect::<Result<Vec<_>, ClientError>>()?;
+        let response = self
+            .client
+            .upload_events(UploadEventsRequest {
+                device_id: device_id.0.to_string(),
+                events,
+            })
+            .await?
+            .into_inner();
 
-            let _event = match event.kind {
-                timetracker_model::EventKind::CollectorStarted => proto!(protos::Event {
-                    id: id,
-                    device_id: device_id,
-                    occurred_at: occurred_at,
-                    collectorStarted: protos::CollectorStarted {},
-                }),
-                timetracker_model::EventKind::CollectorStopped => proto!(protos::Event {
-                    id: id,
-                    device_id: device_id,
-                    occurred_at: occurred_at,
-                    collectorStopped: protos::CollectorStopped {},
-                }),
-                timetracker_model::EventKind::Heartbeat => proto!(protos::Event {
-                    id: id,
-                    device_id: device_id,
-                    occurred_at: occurred_at,
-                    heartbeat: protos::Heartbeat {},
-                }),
-                timetracker_model::EventKind::Observation(ref kind) => {
-                    let observation = match kind {
-                        timetracker_model::ObservationKind::IdleChanged { idle } => proto!(protos::Observation {
-                            idleChanged: protos::IdleChanged {
-                                idle: *idle
-                            }
-                        }),
-                        timetracker_model::ObservationKind::FocusedApplicationChanged { app_id, title } =>
-                        match title {
-                            Some(title) =>
-                                proto!(protos::Observation {
-                                    focusedApplicationChanged: protos::FocusedApplicationChanged {
-                                        app_id: app_id,
-                                        title: title
-                                    }
-                                }),
-                            None =>
-                                proto!(protos::Observation {
-                                    focusedApplicationChanged: protos::FocusedApplicationChanged {
-                                        app_id: app_id
-                                    }
-                                }),
-                        },
-                        timetracker_model::ObservationKind::KeyboardButtonPressed {} => proto!(protos::Observation {
-                            keyboardButtonPressed: protos::KeyboardButtonPressed {}
-                        }),
-                        timetracker_model::ObservationKind::MouseClicked {} => proto!(protos::Observation {
-                            mouseClicked: protos::MouseClicked {}
-                        }),
-                        timetracker_model::ObservationKind::MouseMoved {} => proto!(protos::Observation {
-                            mouseMoved: protos::MouseMoved {}
-                        }),
-                    };
-                    proto!(protos::Event {
-                        id: id,
-                        device_id: device_id,
-                        occurred_at: occurred_at,
-                        observation: observation
-                    })
-                },
-                timetracker_model::EventKind::AdapterStatus {
-                    ref adapter_id,
-                    observation_type,
-                    ref status
-                } => {
-                    let observation_type = match observation_type {
-                        timetracker_model::ObservationType::Idle => protos::ObservationType::Idle,
-                        timetracker_model::ObservationType::FocusedApplication => protos::ObservationType::FocusedApplication,
-                        timetracker_model::ObservationType::Keyboard => protos::ObservationType::Keyboard,
-                        timetracker_model::ObservationType::MouseClick => protos::ObservationType::MouseClick,
-                        timetracker_model::ObservationType::MouseMove => protos::ObservationType::MouseMove
-                    };
-                    let adapter_status = match status {
-                        timetracker_model::AdapterStatus::Available => proto!(protos::AdapterStatusEvent {
-                            adapter_id: adapter_id,
-                            observationType: observation_type,
-                            status: protos::AdapterStatus {
-                                available: protos::Available {}
-                            }
-                        }),
-                        timetracker_model::AdapterStatus::Unavailable { reason } => proto!(protos::AdapterStatusEvent {
-                            adapter_id: adapter_id,
-                            observationType: observation_type,
-                            status: protos::AdapterStatus {
-                                unavailable: protos::Unavailable {
-                                    reason: reason
-                                }
-                            }
-                        })
-                    };
-                    proto!(protos::Event {
-                        id: id,
-                        device_id: device_id,
-                        occurred_at: occurred_at,
-                        adapterStatus: adapter_status
-                    })
+        response
+            .accepted_event_ids
+            .into_iter()
+            .map(|id| {
+                uuid::Uuid::parse_str(&id)
+                    .map(EventId)
+                    .map_err(|error| Box::new(error) as ClientError)
+            })
+            .collect()
+    }
+}
+
+fn to_proto_event(event: &Event) -> Result<EventMessage, ClientError> {
+    let occurred_at_unix_nanos =
+        i64::try_from(event.occurred_at.unix_timestamp_nanos()).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "event timestamp is outside i64 range",
+            )
+        })?;
+
+    let kind = match &event.kind {
+        EventKind::CollectorStarted => event_message::Kind::CollectorStarted(true),
+        EventKind::CollectorStopped => event_message::Kind::CollectorStopped(true),
+        EventKind::Heartbeat => event_message::Kind::Heartbeat(true),
+        EventKind::Observation(ObservationKind::IdleChanged { idle }) => {
+            event_message::Kind::IdleChanged(*idle)
+        }
+        EventKind::Observation(ObservationKind::FocusedApplicationChanged { app_id, title }) => {
+            event_message::Kind::FocusedApplicationChanged(FocusedApplicationChangedMessage {
+                app_id: app_id.clone(),
+                title: title.clone(),
+            })
+        }
+        EventKind::Observation(ObservationKind::KeyboardButtonPressed { .. }) => {
+            event_message::Kind::KeyboardButtonPressed(true)
+        }
+        EventKind::Observation(ObservationKind::MouseClicked { .. }) => {
+            event_message::Kind::MouseClicked(true)
+        }
+        EventKind::Observation(ObservationKind::MouseMoved { .. }) => {
+            event_message::Kind::MouseMoved(true)
+        }
+        EventKind::Observation(ObservationKind::SystemSleepChanged { sleeping }) => {
+            event_message::Kind::SystemSleepChanged(*sleeping)
+        }
+        EventKind::AdapterStatus {
+            adapter_id,
+            observation_type,
+            status,
+        } => {
+            let observation_type = match observation_type {
+                ObservationType::Idle => ObservationTypeProto::Idle,
+                ObservationType::FocusedApplication => ObservationTypeProto::FocusedApplication,
+                ObservationType::Keyboard => ObservationTypeProto::Keyboard,
+                ObservationType::MouseClick => ObservationTypeProto::MouseClick,
+                ObservationType::MouseMove => ObservationTypeProto::MouseMove,
+            } as i32;
+            let status = match status {
+                AdapterStatus::Available => adapter_status_message::Status::Available(true),
+                AdapterStatus::Unavailable { reason } => {
+                    adapter_status_message::Status::UnavailableReason(reason.clone())
                 }
             };
-
-            let _res: Result<protos::Uuid, _> = UnaryCallBuilder::new(&self.channel, "/upload_client.Upload/Send", _event.as_view()).await;
-            match _res {
-                Ok(uuid) => res.push(EventId(Uuid::from_u64_pair(uuid.hi(), uuid.lo()))),
-                Err(_) => ()
-            }
+            event_message::Kind::AdapterStatus(AdapterStatusMessage {
+                adapter_id: adapter_id.clone(),
+                observation_type,
+                status: Some(status),
+            })
         }
-        Ok(res)
-    }
+    };
+
+    Ok(EventMessage {
+        id: event.id.0.to_string(),
+        device_id: event.device_id.0.to_string(),
+        occurred_at_unix_nanos,
+        kind: Some(kind),
+    })
 }
