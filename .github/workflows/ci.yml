@@ -2,18 +2,18 @@ name: CI & Release
 
 on:
   push:
-    branches: [ "main", "master", "dev" ]
+    branches: [ "main", "dev" ]
     tags:
       - "v*.*.*"
   pull_request:
-    branches: [ "main", "master", "dev" ]
+    branches: [ "main", "dev" ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   rust-ci:
-    name: Rust CI (Format, Lint, Test)
+    name: Rust CI
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,19 +35,6 @@ jobs:
       - name: Run Tests
         run: cargo test --all-targets --all-features
 
-  # frontend-ci:
-  #   name: Frontend CI
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 20
-  #         cache: 'npm' # или pnpm / yarn
-  #     - run: npm ci
-  #     - run: npm run lint
-  #     - run: npm test
-
   release:
     name: Build & Release Linux Client
     needs: [rust-ci]
@@ -66,13 +53,12 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Build client binary (release)
+      - name: Build client binary
         run: cargo build --release --target x86_64-unknown-linux-gnu
 
       - name: Prepare binary artifact
         run: |
           mkdir -p artifacts
-          # Замените 'client' на имя вашего исполняемого файла
           cp target/x86_64-unknown-linux-gnu/release/client artifacts/client-linux-amd64
           chmod +x artifacts/client-linux-amd64
 
