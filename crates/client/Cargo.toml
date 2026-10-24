@@ -7,4 +7,5 @@ edition.workspace = true
 async-trait.workspace = true
 timetracker-model = { path = "../model" }
 tokio.workspace = true
+time.workspace = true
 uuid.workspace = true
