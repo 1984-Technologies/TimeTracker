@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
-use timetracker_model::{DeviceId, EventKind};
+use timetracker_model::{DeviceId, EventKind, Event, EventId};
 use tokio::sync::{mpsc, watch};
+use time::OffsetDateTime;
+use uuid::Uuid;
 
 use crate::{ClientError, adapters::AdapterOutput, queue::EventQueue, upload::GrpcUploadClient};
 
@@ -12,6 +14,9 @@ pub struct ClientEventService {
 }
 
 impl ClientEventService {
+    // max number of events processed in 1 iteration of the upload loop
+    const LIMIT: usize = 100;
+
     pub fn new(
         device_id: DeviceId,
         queue: Arc<EventQueue>,
@@ -25,17 +30,65 @@ impl ClientEventService {
     }
 
     pub async fn record_outputs(
-        &self,
-        _outputs: mpsc::Receiver<AdapterOutput>,
+        &mut self,
+        mut _outputs: mpsc::Receiver<AdapterOutput>,
     ) -> Result<(), ClientError> {
-        todo!()
+        let adapter_output = _outputs.recv().await;
+        match adapter_output {
+            None => Ok(()),
+            Some(AdapterOutput::Observation(observation)) => {
+                let event_id = EventId(Uuid::new_v4());
+                let timestamp = OffsetDateTime::now_utc();
+                Arc::make_mut(&mut self.queue).push(
+                    Event {
+                        id: event_id,
+                        device_id: self.device_id,
+                        occurred_at: timestamp,
+                        kind: EventKind::Observation(observation.kind)
+                    }
+                ).await
+            },
+            Some(AdapterOutput::Status {
+                adapter_id,
+                observation_type,
+                status
+            }) => {
+                let event_id = EventId(Uuid::new_v4());
+                let timestamp = OffsetDateTime::now_utc();
+                Arc::make_mut(&mut self.queue).push(
+                    Event {
+                        id: event_id,
+                        device_id: self.device_id,
+                        occurred_at: timestamp,
+                        kind: EventKind::AdapterStatus {
+                            adapter_id: adapter_id.to_string(),
+                            observation_type: observation_type,
+                            status: status
+                        }
+                    }
+                ).await
+            }
+        }
     }
 
-    pub async fn enqueue_kind(&self, _kind: EventKind) -> Result<(), ClientError> {
-        todo!()
+    pub async fn enqueue_kind(&mut self, _kind: EventKind) -> Result<(), ClientError> {
+        Arc::make_mut(&mut self.queue).push(
+            Event {
+                id: EventId(Uuid::new_v4()),
+                device_id: self.device_id,
+                occurred_at: OffsetDateTime::now_utc(),
+                kind: _kind
+            }
+        ).await
     }
 
-    pub async fn upload_loop(&self, _shutdown: watch::Receiver<bool>) -> Result<(), ClientError> {
-        todo!()
+    pub async fn upload_loop(&mut self, _shutdown: watch::Receiver<bool>) -> Result<(), ClientError> {
+        while !*_shutdown.borrow() {
+            self.queue.wait_for_events().await?;
+            let events = self.queue.pending(Self::LIMIT).await?;
+            let event_ids = self.upload_client.send(self.device_id, &events).await?;
+            Arc::make_mut(&mut self.queue).acknowledge(&event_ids).await?;
+        }
+        Ok(())
     }
 }
