@@ -149,7 +149,10 @@ mod tests {
         let e1 = make_event(device_id);
         let e2 = make_event(device_id);
 
-        let receipt1 = service.collect(device_id, &[e1.clone()]).await.unwrap();
+        let receipt1 = service
+            .collect(device_id, std::slice::from_ref(&e1))
+            .await
+            .unwrap();
         assert_eq!(receipt1.accepted, vec![e1.id]);
 
         let receipt2 = service

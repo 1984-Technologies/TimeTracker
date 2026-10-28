@@ -1,5 +1,9 @@
+#![allow(
+    clippy::result_large_err,
+    reason = "This gRPC module uses tonic::Status for transport errors"
+)]
+
 use async_trait::async_trait;
-use prost;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use time::OffsetDateTime;
