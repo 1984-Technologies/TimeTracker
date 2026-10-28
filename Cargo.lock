@@ -1902,6 +1902,7 @@ name = "timetracker-client"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "time",
  "timetracker-model",
  "tokio",
  "uuid",
