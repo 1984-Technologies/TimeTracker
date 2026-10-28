@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package timetracker.metrics;
+
+service ClientMetricsUploader {
+  rpc UploadEvents (UploadEventsRequest) returns (UploadEventsResponse);
+}
+
+message UploadEventsRequest {
+  string device_id = 1;
+  repeated EventMessage events = 2;
+}
+
+message UploadEventsResponse {
+  repeated string accepted_event_ids = 1;
+}
+
+enum ObservationTypeProto {
+  OBSERVATION_TYPE_UNSPECIFIED = 0;
+  IDLE = 1;
+  FOCUSED_APPLICATION = 2;
+  KEYBOARD = 3;
+  MOUSE_CLICK = 4;
+  MOUSE_MOVE = 5;
+}
+
+message AdapterStatusMessage {
+  string adapter_id = 1;
+  ObservationTypeProto observation_type = 2;
+  oneof status {
+    bool available = 3;
+    string unavailable_reason = 4;
+  }
+}
+
+message FocusedApplicationChangedMessage {
+  string app_id = 1;
+  optional string title = 2;
+}
+
+message EventMessage {
+  string id = 1;
+  string device_id = 2;
+  int64 occurred_at_unix_nanos = 3;
+
+  oneof kind {
+    bool collector_started = 4;
+    bool collector_stopped = 5;
+    bool heartbeat = 6;
+    bool idle_changed = 7;
+    FocusedApplicationChangedMessage focused_application_changed = 8;
+    bool keyboard_button_pressed = 9;
+    bool mouse_clicked = 10;
+    bool mouse_moved = 11;
+    AdapterStatusMessage adapter_status = 12;
+  }
+}
