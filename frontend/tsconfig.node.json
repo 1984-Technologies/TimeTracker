@@ -13,5 +13,5 @@
     "strict": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "mock-server/**/*.ts"]
+  "include": ["vite.config.ts", "mock-server/**/*.ts", "tests/**/*.ts"]
 }

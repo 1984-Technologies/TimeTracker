@@ -28,6 +28,13 @@ Both modes read the API origin from their corresponding environment file (`.env.
 npm run build
 ```
 
+Run the analytics tests with:
+
+```bash
+npm test
+```
+
 The TypeScript definitions in `src/types.ts` mirror the structures in
 `crates/backend/src/dashboard.rs`. Enum values use Serde's default externally tagged JSON shape.
-Recharts is installed for the richer statistics visualizations planned for later iterations.
+The application-activity chart infers intervals between focused-application events, excludes idle
+and stopped-collector intervals, and normalizes each stacked bar to one 15-minute bucket.
