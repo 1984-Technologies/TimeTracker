@@ -30,7 +30,7 @@ impl ClientEventService {
     }
 
     pub async fn record_outputs(
-        &mut self,
+        &self,
         mut _outputs: mpsc::Receiver<AdapterOutput>,
     ) -> Result<(), ClientError> {
         let adapter_output = _outputs.recv().await;
@@ -39,7 +39,7 @@ impl ClientEventService {
             Some(AdapterOutput::Observation(observation)) => {
                 let event_id = EventId(Uuid::new_v4());
                 let timestamp = OffsetDateTime::now_utc();
-                Arc::make_mut(&mut self.queue).push(
+                self.queue.push(
                     Event {
                         id: event_id,
                         device_id: self.device_id,
@@ -55,7 +55,7 @@ impl ClientEventService {
             }) => {
                 let event_id = EventId(Uuid::new_v4());
                 let timestamp = OffsetDateTime::now_utc();
-                Arc::make_mut(&mut self.queue).push(
+                self.queue.push(
                     Event {
                         id: event_id,
                         device_id: self.device_id,
@@ -71,8 +71,8 @@ impl ClientEventService {
         }
     }
 
-    pub async fn enqueue_kind(&mut self, _kind: EventKind) -> Result<(), ClientError> {
-        Arc::make_mut(&mut self.queue).push(
+    pub async fn enqueue_kind(&self, _kind: EventKind) -> Result<(), ClientError> {
+        self.queue.push(
             Event {
                 id: EventId(Uuid::new_v4()),
                 device_id: self.device_id,
@@ -82,12 +82,12 @@ impl ClientEventService {
         ).await
     }
 
-    pub async fn upload_loop(&mut self, _shutdown: watch::Receiver<bool>) -> Result<(), ClientError> {
+    pub async fn upload_loop(&self, _shutdown: watch::Receiver<bool>) -> Result<(), ClientError> {
         while !*_shutdown.borrow() {
             self.queue.wait_for_events().await?;
             let events = self.queue.pending(Self::LIMIT).await?;
             let event_ids = self.upload_client.send(self.device_id, &events).await?;
-            Arc::make_mut(&mut self.queue).acknowledge(&event_ids).await?;
+            self.queue.acknowledge(&event_ids).await?;
         }
         Ok(())
     }

@@ -1,4 +1,6 @@
+use std::thread::JoinHandle;
 use tokio::sync::mpsc;
+use tokio::sync::watch;
 
 use crate::{
     ClientError,
@@ -6,19 +8,19 @@ use crate::{
 };
 
 pub struct CollectionSupervisor {
-    pub(crate) adapters: Vec<Box<dyn DesktopAdapter>>,
+    shutdown: Option<watch::Sender<bool>>,
+    tasks: Vec<JoinHandle<(usize, Box<dyn DesktopAdapter>)>>,
 }
 
 impl CollectionSupervisor {
-    pub fn new(adapters: Vec<Box<dyn DesktopAdapter>>) -> Self {
-        Self { adapters }
-    }
-
-    pub async fn start(&mut self, _output: mpsc::Sender<AdapterOutput>) -> Result<(), ClientError> {
+    pub async fn start(
+        _adapters: Vec<Box<dyn DesktopAdapter>>,
+        _output: mpsc::Sender<AdapterOutput>
+    ) -> Self {
         todo!()
     }
 
-    pub async fn stop(&mut self) -> Result<(), ClientError> {
+    pub async fn stop(self) -> Result<(), ClientError> {
         todo!()
     }
 }
