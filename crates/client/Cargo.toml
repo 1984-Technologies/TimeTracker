@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 async-trait.workspace = true
 timetracker-model = { path = "../model" }
-tokio = { workspace = true, features = ["signal"]}
+tokio.workspace = true
 time.workspace = true
 uuid.workspace = true
 
