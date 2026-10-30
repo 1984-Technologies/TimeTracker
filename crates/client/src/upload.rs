@@ -135,7 +135,7 @@ impl GrpcUploadClient {
             device_id: device_id.0.as_hyphenated().to_string(),
             events: messages.into_iter(),
         });
-        let response: Result<protos::UploadEventsResponse, _> = UnaryCallBuilder::new(&self.channel, "/metrics.ClientMetricsUploader/UploadEvents", request.as_view()).await;
+        let response: Result<protos::UploadEventsResponse, _> = UnaryCallBuilder::new(&self.channel, "/timetracker.metrics.ClientMetricsUploader/UploadEvents", request.as_view()).await;
         match response {
             Ok(response) => Ok(
                 response.accepted_event_ids()
