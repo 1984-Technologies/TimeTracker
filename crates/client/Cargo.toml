@@ -14,3 +14,6 @@ grpc-protobuf = "0.9.0"
 
 [build-dependencies]
 protobuf-codegen = "4.34.0-release"
+
+[dev-dependencies]
+time.workspace = true
