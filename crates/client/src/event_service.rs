@@ -33,41 +33,42 @@ impl ClientEventService {
         &self,
         mut _outputs: mpsc::Receiver<AdapterOutput>,
     ) -> Result<(), ClientError> {
-        let adapter_output = _outputs.recv().await;
-        match adapter_output {
-            None => Ok(()),
-            Some(AdapterOutput::Observation(observation)) => {
-                let event_id = EventId(Uuid::new_v4());
-                let timestamp = OffsetDateTime::now_utc();
-                self.queue.push(
-                    Event {
-                        id: event_id,
-                        device_id: self.device_id,
-                        occurred_at: timestamp,
-                        kind: EventKind::Observation(observation.kind)
-                    }
-                ).await
-            },
-            Some(AdapterOutput::Status {
-                adapter_id,
-                observation_type,
-                status
-            }) => {
-                let event_id = EventId(Uuid::new_v4());
-                let timestamp = OffsetDateTime::now_utc();
-                self.queue.push(
-                    Event {
-                        id: event_id,
-                        device_id: self.device_id,
-                        occurred_at: timestamp,
-                        kind: EventKind::AdapterStatus {
-                            adapter_id: adapter_id.to_string(),
-                            observation_type: observation_type,
-                            status: status
+        loop {
+            let adapter_output = _outputs.recv().await;
+            match adapter_output {
+                None => (),
+                Some(AdapterOutput::Observation(observation)) => {
+                    let event_id = EventId(Uuid::new_v4());
+                    self.queue.push(
+                        Event {
+                            id: event_id,
+                            device_id: self.device_id,
+                            occurred_at: observation.occurred_at,
+                            kind: EventKind::Observation(observation.kind)
                         }
-                    }
-                ).await
-            }
+                    ).await?;
+                },
+                Some(AdapterOutput::Status {
+                    adapter_id,
+                    observation_type,
+                    status
+                }) => {
+                    let event_id = EventId(Uuid::new_v4());
+                    let timestamp = OffsetDateTime::now_utc();
+                    self.queue.push(
+                        Event {
+                            id: event_id,
+                            device_id: self.device_id,
+                            occurred_at: timestamp,
+                            kind: EventKind::AdapterStatus {
+                                adapter_id: adapter_id.to_string(),
+                                observation_type: observation_type,
+                                status: status
+                            }
+                        }
+                    ).await?;
+                }
+            };
         }
     }
 
