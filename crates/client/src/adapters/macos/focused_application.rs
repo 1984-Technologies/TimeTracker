@@ -29,14 +29,14 @@ struct ActiveWindow {
     title: Option<String>,
 }
 
-pub struct FocusedApplicationAdapter {
+pub(super) struct FocusedApplicationAdapter {
     application_events: mpsc::UnboundedReceiver<String>,
     initial_app_id: Option<String>,
     previous: Option<ActiveWindow>,
 }
 
 impl FocusedApplicationAdapter {
-    pub fn new(
+    pub(super) fn new(
         application_events: mpsc::UnboundedReceiver<String>,
         initial_app_id: Option<String>,
     ) -> Self {

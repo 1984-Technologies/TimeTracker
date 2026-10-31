@@ -9,9 +9,9 @@ time.workspace = true
 timetracker-model = { path = "../model" }
 tokio.workspace = true
 uuid.workspace = true
-nsworkspace = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 active-win-pos-rs = "0.11"
+nsworkspace = "0.2"
 powerwatch = "0.1"
 rdev = "0.5"

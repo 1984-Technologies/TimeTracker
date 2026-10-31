@@ -1,6 +1,7 @@
 mod focused_application;
 mod idle;
 mod input;
+mod runtime;
 
 use time::OffsetDateTime;
 use timetracker_model::{AdapterStatus, Observation, ObservationKind, ObservationType};
@@ -8,9 +9,9 @@ use tokio::sync::{mpsc, watch};
 
 use super::AdapterOutput;
 
-pub use focused_application::FocusedApplicationAdapter;
 pub use idle::IdleAdapter;
 pub use input::{KeyboardAdapter, MouseClickAdapter, MouseMoveAdapter};
+pub use runtime::{MacOsAdapterRuntime, MacOsRuntimeShutdownHandle};
 
 pub(super) fn unavailable(reason: impl Into<String>) -> AdapterStatus {
     AdapterStatus::Unavailable {
@@ -52,12 +53,12 @@ pub(super) fn shutdown_requested(shutdown: &watch::Receiver<bool>) -> bool {
     *shutdown.borrow()
 }
 
-pub fn default_adapters(
+fn build_default_adapters(
     focused_application_events: mpsc::UnboundedReceiver<String>,
     initial_app_id: Option<String>,
 ) -> Vec<Box<dyn super::DesktopAdapter>> {
     vec![
-        Box::new(FocusedApplicationAdapter::new(
+        Box::new(focused_application::FocusedApplicationAdapter::new(
             focused_application_events,
             initial_app_id,
         )),
@@ -75,7 +76,7 @@ mod tests {
 
     fn adapters() -> Vec<Box<dyn DesktopAdapter>> {
         let (_events_tx, events_rx) = mpsc::unbounded_channel();
-        default_adapters(events_rx, None)
+        build_default_adapters(events_rx, None)
     }
 
     #[test]
