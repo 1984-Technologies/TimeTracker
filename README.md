@@ -34,8 +34,8 @@ The client stores a stable device ID under `$XDG_STATE_HOME/timetracker/device-i
 server is unavailable. Set `TIMETRACKER_HEARTBEAT_SECONDS` to change the default 30-second interval.
 `TIMETRACKER_SERVER` remains available as an environment-variable alternative to
 `--grpc-address`. Run the client with `--help` to see all CLI options. On macOS the client starts
-the desktop observation adapters; on other operating systems it sends collector lifecycle events
-and heartbeats.
+the desktop observation adapters. On Linux it collects focused-application changes through KWin
+on Plasma Wayland or through EWMH on X11, in addition to collector lifecycle events and heartbeats.
 
 ## Local development
 

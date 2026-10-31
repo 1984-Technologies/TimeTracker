@@ -16,6 +16,8 @@ use std::{
 };
 #[cfg(target_os = "macos")]
 use timetracker_client::adapters::default_adapters;
+#[cfg(target_os = "linux")]
+use timetracker_client::adapters::default_adapters;
 
 const DEFAULT_SERVER: &str = "http://127.0.0.1:50051";
 const DEFAULT_HEARTBEAT_SECONDS: u64 = 30;
@@ -178,7 +180,9 @@ async fn main() -> Result<(), ClientError> {
             adapters,
         )
     };
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    let adapters = default_adapters();
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     let adapters = Vec::new();
 
     println!(

@@ -10,6 +10,7 @@ timetracker-model = { path = "../model" }
 tokio.workspace = true
 uuid.workspace = true
 prost = "0.13.5"
+serde_json.workspace = true
 tonic = "0.12.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
