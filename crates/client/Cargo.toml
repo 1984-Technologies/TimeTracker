@@ -8,3 +8,12 @@ async-trait.workspace = true
 timetracker-model = { path = "../model" }
 tokio.workspace = true
 uuid.workspace = true
+protobuf = "4.34.0-release"
+grpc = "0.9.0"
+grpc-protobuf = "0.9.0"
+
+[build-dependencies]
+protobuf-codegen = "4.34.0-release"
+
+[dev-dependencies]
+time.workspace = true
