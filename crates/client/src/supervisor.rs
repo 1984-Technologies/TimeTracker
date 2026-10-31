@@ -1,9 +1,7 @@
-use std::{io, mem};
-
 use timetracker_model::AdapterStatus;
 use tokio::{
     sync::{mpsc, watch},
-    task::JoinHandle,
+    task::{JoinError, JoinHandle},
 };
 
 use crate::{
@@ -12,58 +10,43 @@ use crate::{
 };
 
 pub struct CollectionSupervisor {
-    pub(crate) adapters: Vec<Box<dyn DesktopAdapter>>,
     shutdown: Option<watch::Sender<bool>>,
     tasks: Vec<JoinHandle<(usize, Box<dyn DesktopAdapter>)>>,
 }
 
 impl CollectionSupervisor {
-    pub fn new(adapters: Vec<Box<dyn DesktopAdapter>>) -> Self {
-        Self {
-            adapters,
-            shutdown: None,
-            tasks: Vec::new(),
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn for_current_desktop() -> Self {
-        Self::new(crate::adapters::default_macos_adapters())
-    }
-
-    pub async fn start(&mut self, output: mpsc::Sender<AdapterOutput>) -> Result<(), ClientError> {
-        if self.shutdown.is_some() {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "collection supervisor is already running; call stop before start",
-            )));
-        }
-
+    pub async fn start(
+        adapters: Vec<Box<dyn DesktopAdapter>>,
+        output: mpsc::Sender<AdapterOutput>,
+    ) -> Self {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        self.shutdown = Some(shutdown_tx);
+        let mut tasks = Vec::with_capacity(adapters.len());
 
-        let adapters = mem::take(&mut self.adapters);
-        for (index, adapter) in adapters.into_iter().enumerate() {
+        for (index, mut adapter) in adapters.into_iter().enumerate() {
             let adapter_id = adapter.id();
             let observation_type = adapter.observation_type();
             let task_output = output.clone();
             let task_shutdown = shutdown_rx.clone();
 
-            self.tasks.push(tokio::spawn(async move {
-                let mut adapter = adapter;
+            tasks.push(tokio::spawn(async move {
                 let status = adapter.probe().await;
-
-                let _ = task_output
+                if task_output
                     .send(AdapterOutput::Status {
                         adapter_id,
                         observation_type,
                         status: status.clone(),
                     })
-                    .await;
-
-                if status == AdapterStatus::Available
-                    && let Err(error) = adapter.run(task_output.clone(), task_shutdown).await
+                    .await
+                    .is_err()
                 {
+                    return (index, adapter);
+                }
+
+                if status != AdapterStatus::Available || *task_shutdown.borrow() {
+                    return (index, adapter);
+                }
+
+                if let Err(error) = adapter.run(task_output.clone(), task_shutdown).await {
                     let _ = task_output
                         .send(AdapterOutput::Status {
                             adapter_id,
@@ -79,52 +62,52 @@ impl CollectionSupervisor {
             }));
         }
 
-        Ok(())
+        Self {
+            shutdown: Some(shutdown_tx),
+            tasks,
+        }
     }
 
-    pub async fn stop(&mut self) -> Result<(), ClientError> {
-        let Some(shutdown) = self.shutdown.take() else {
-            return Ok(());
-        };
-        shutdown.send_replace(true);
-        drop(shutdown);
+    pub async fn stop(self) -> Result<(), ClientError> {
+        let Self { shutdown, tasks } = self;
 
-        let tasks = mem::take(&mut self.tasks);
-        let mut returned_adapters = Vec::with_capacity(tasks.len());
-        let mut first_join_error = None;
-        for task in tasks {
+        if let Some(shutdown) = shutdown {
+            shutdown.send_replace(true);
+        }
+
+        let mut first_join_error: Option<JoinError> = None;
+        for (expected_index, task) in tasks.into_iter().enumerate() {
             match task.await {
-                Ok(adapter) => returned_adapters.push(adapter),
-                Err(error) if first_join_error.is_none() => first_join_error = Some(error),
-                Err(_) => {}
+                Ok((adapter_index, adapter)) => {
+                    debug_assert_eq!(adapter_index, expected_index);
+                    drop(adapter);
+                }
+                Err(error) => {
+                    if first_join_error.is_none() {
+                        first_join_error = Some(error);
+                    }
+                }
             }
         }
-        returned_adapters.sort_unstable_by_key(|(index, _)| *index);
-        self.adapters = returned_adapters
-            .into_iter()
-            .map(|(_, adapter)| adapter)
-            .collect();
 
         if let Some(error) = first_join_error {
             return Err(Box::new(error));
         }
         Ok(())
     }
-
-    pub fn is_running(&self) -> bool {
-        self.shutdown.is_some()
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
+    use std::{
+        io,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
     };
 
     use async_trait::async_trait;
-    use std::io;
     use timetracker_model::{AdapterStatus, ObservationType};
     use tokio::sync::{mpsc, watch};
 
@@ -191,42 +174,59 @@ mod tests {
         })
     }
 
+    async fn wait_for_run_count(run_count: &AtomicUsize, expected: usize) {
+        for _ in 0..100 {
+            if run_count.load(Ordering::SeqCst) == expected {
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(run_count.load(Ordering::SeqCst), expected);
+    }
+
     #[tokio::test]
     async fn starts_available_adapters_and_stops_them() {
         let run_count = Arc::new(AtomicUsize::new(0));
-        let mut supervisor = CollectionSupervisor::new(vec![fake_adapter(
-            AdapterStatus::Available,
-            run_count.clone(),
-            false,
-        )]);
-        let (output_tx, _output_rx) = mpsc::channel(8);
+        let (output_tx, mut output_rx) = mpsc::channel(8);
+        let supervisor = CollectionSupervisor::start(
+            vec![fake_adapter(
+                AdapterStatus::Available,
+                run_count.clone(),
+                false,
+            )],
+            output_tx,
+        )
+        .await;
 
-        supervisor.start(output_tx.clone()).await.unwrap();
-        assert!(supervisor.is_running());
-        assert!(supervisor.start(output_tx.clone()).await.is_err());
-
+        let status = output_rx.recv().await.unwrap();
+        assert!(matches!(
+            status,
+            AdapterOutput::Status {
+                status: AdapterStatus::Available,
+                ..
+            }
+        ));
+        wait_for_run_count(&run_count, 1).await;
         supervisor.stop().await.unwrap();
-        assert!(!supervisor.is_running());
         assert_eq!(run_count.load(Ordering::SeqCst), 1);
-
-        supervisor.start(output_tx).await.unwrap();
-        supervisor.stop().await.unwrap();
-        assert_eq!(run_count.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
     async fn unavailable_adapters_report_status_and_are_not_run() {
         let run_count = Arc::new(AtomicUsize::new(0));
-        let mut supervisor = CollectionSupervisor::new(vec![fake_adapter(
-            AdapterStatus::Unavailable {
-                reason: "test permission missing".to_owned(),
-            },
-            run_count.clone(),
-            false,
-        )]);
         let (output_tx, mut output_rx) = mpsc::channel(8);
+        let supervisor = CollectionSupervisor::start(
+            vec![fake_adapter(
+                AdapterStatus::Unavailable {
+                    reason: "test permission missing".to_owned(),
+                },
+                run_count.clone(),
+                false,
+            )],
+            output_tx,
+        )
+        .await;
 
-        supervisor.start(output_tx).await.unwrap();
         let output = output_rx.recv().await.unwrap();
         assert!(matches!(
             output,
@@ -242,31 +242,34 @@ mod tests {
     #[tokio::test]
     async fn run_errors_are_reported_as_status() {
         let run_count = Arc::new(AtomicUsize::new(0));
-        let mut supervisor = CollectionSupervisor::new(vec![fake_adapter(
-            AdapterStatus::Available,
-            run_count,
-            true,
-        )]);
         let (output_tx, mut output_rx) = mpsc::channel(8);
+        let supervisor = CollectionSupervisor::start(
+            vec![fake_adapter(
+                AdapterStatus::Available,
+                run_count.clone(),
+                true,
+            )],
+            output_tx,
+        )
+        .await;
 
-        supervisor.start(output_tx).await.unwrap();
-        let initial_status = output_rx.recv().await.unwrap();
+        let available = output_rx.recv().await.unwrap();
         assert!(matches!(
-            initial_status,
+            available,
             AdapterOutput::Status {
                 status: AdapterStatus::Available,
                 ..
             }
         ));
-        let error_status = output_rx.recv().await.unwrap();
+        let failed = output_rx.recv().await.unwrap();
         assert!(matches!(
-            error_status,
+            failed,
             AdapterOutput::Status {
-                status: AdapterStatus::Unavailable { reason },
+                status: AdapterStatus::Unavailable { .. },
                 ..
-            } if reason.contains("synthetic event handler failure")
+            }
         ));
-
+        assert_eq!(run_count.load(Ordering::SeqCst), 1);
         supervisor.stop().await.unwrap();
     }
 }

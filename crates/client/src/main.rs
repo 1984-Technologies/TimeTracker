@@ -7,6 +7,16 @@ use timetracker_client::{
 use timetracker_model::EventKind;
 use tokio::sync::{mpsc, watch};
 
+#[cfg(target_os = "macos")]
+use nsworkspace::{Event as WorkspaceEvent, Monitor, NotificationListener};
+#[cfg(target_os = "macos")]
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    thread,
+};
+#[cfg(target_os = "macos")]
+use timetracker_client::adapters::default_adapters;
+
 const DEFAULT_SERVER: &str = "http://127.0.0.1:50051";
 const DEFAULT_HEARTBEAT_SECONDS: u64 = 30;
 const DEFAULT_BUFFER_CAPACITY: usize = 100;
@@ -132,9 +142,44 @@ async fn main() -> Result<(), ClientError> {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     #[cfg(target_os = "macos")]
-    let mut supervisor = CollectionSupervisor::for_current_desktop();
+    let (monitor, stop_monitor_tx, forwarder_running, event_forwarder, adapters) = {
+        let (monitor, workspace_events, stop_monitor_tx) = Monitor::new().ok_or_else(|| {
+            std::io::Error::other("NSWorkspace monitor must be created on the main thread")
+        })?;
+        monitor.subscribe(NotificationListener::DidActivateApplication);
+        let initial_app_id = monitor.get_active_application();
+        let (focused_app_tx, focused_app_rx) = mpsc::unbounded_channel();
+        let forwarder_running = Arc::new(AtomicBool::new(true));
+        let thread_running = Arc::clone(&forwarder_running);
+        let event_forwarder = thread::Builder::new()
+            .name("timetracker-workspace-events".to_owned())
+            .spawn(move || {
+                while thread_running.load(Ordering::Relaxed) && !focused_app_tx.is_closed() {
+                    match workspace_events.recv_timeout(Duration::from_millis(100)) {
+                        Ok(WorkspaceEvent::DidActivateApplication(app_id)) => {
+                            if focused_app_tx.send(app_id).is_err() {
+                                break;
+                            }
+                        }
+                        Ok(WorkspaceEvent::Error(error)) => {
+                            eprintln!("NSWorkspace event error: {error:?}");
+                        }
+                        Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+            })?;
+        let adapters = default_adapters(focused_app_rx, initial_app_id);
+        (
+            monitor,
+            stop_monitor_tx,
+            forwarder_running,
+            event_forwarder,
+            adapters,
+        )
+    };
     #[cfg(not(target_os = "macos"))]
-    let mut supervisor = CollectionSupervisor::new(Vec::new());
+    let adapters = Vec::new();
 
     println!(
         "TimeTracker client {} sending events to {} (heartbeat every {} seconds)",
@@ -153,23 +198,52 @@ async fn main() -> Result<(), ClientError> {
     event_service
         .enqueue_kind(EventKind::CollectorStarted)
         .await?;
-    supervisor.start(output_tx.clone()).await?;
+    let supervisor = CollectionSupervisor::start(adapters, output_tx.clone()).await;
 
-    let mut heartbeat = tokio::time::interval(Duration::from_secs(config.heartbeat_seconds));
-    heartbeat.tick().await;
-    loop {
-        tokio::select! {
-            result = tokio::signal::ctrl_c() => {
-                result?;
-                break;
-            }
-            _ = heartbeat.tick() => {
-                event_service.enqueue_kind(EventKind::Heartbeat).await?;
+    let (heartbeat_stop_tx, mut heartbeat_stop_rx) = watch::channel(false);
+    let heartbeat_task = tokio::spawn({
+        let event_service = Arc::clone(&event_service);
+        async move {
+            let mut heartbeat =
+                tokio::time::interval(Duration::from_secs(config.heartbeat_seconds));
+            heartbeat.tick().await;
+            loop {
+                tokio::select! {
+                    _ = heartbeat.tick() => {
+                        event_service.enqueue_kind(EventKind::Heartbeat).await?;
+                    }
+                    changed = heartbeat_stop_rx.changed() => {
+                        if changed.is_err() || *heartbeat_stop_rx.borrow() {
+                            return Ok::<_, ClientError>(());
+                        }
+                    }
+                }
             }
         }
-    }
+    });
 
+    #[cfg(target_os = "macos")]
+    {
+        let stop_monitor = stop_monitor_tx.clone();
+        tokio::spawn(async move {
+            if let Err(error) = tokio::signal::ctrl_c().await {
+                eprintln!("failed to listen for Ctrl-C: {error}");
+            }
+            let _ = stop_monitor.send(());
+        });
+        monitor.run();
+    }
+    #[cfg(not(target_os = "macos"))]
+    tokio::signal::ctrl_c().await?;
+
+    heartbeat_stop_tx.send_replace(true);
+    heartbeat_task.await??;
     supervisor.stop().await?;
+    #[cfg(target_os = "macos")]
+    {
+        forwarder_running.store(false, Ordering::Relaxed);
+        let _ = event_forwarder.join();
+    }
     drop(output_tx);
     recorder.await??;
     event_service

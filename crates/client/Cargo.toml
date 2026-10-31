@@ -14,6 +14,7 @@ tonic = "0.12.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 active-win-pos-rs = "0.11"
+nsworkspace = "0.2"
 powerwatch = "0.1"
 rdev = "0.5"
 
