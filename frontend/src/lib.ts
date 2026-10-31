@@ -40,7 +40,11 @@ export function presentActionKind(kind: UserActionKind): KindPresentation {
     return { label: "Keyboard", detail: kind.KeyboardButtonPressed.key, tone: "slate" };
   }
   if ("MouseClicked" in kind) {
-    return { label: "Mouse click", detail: kind.MouseClicked.button, tone: "slate" };
+    return {
+      label: "Mouse click",
+      detail: kind.MouseClicked.button,
+      tone: "slate",
+    };
   }
   if ("MouseMoved" in kind) {
     return {

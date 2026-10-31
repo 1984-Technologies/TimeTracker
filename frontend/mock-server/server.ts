@@ -1,5 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { UserAction, UserSummary } from "../src/types";
+import type {
+  AdapterStatus,
+  ObservationType,
+  UserAction,
+  UserSummary,
+} from "../src/types";
 
 const port = Number(process.env.MOCK_PORT ?? 8239);
 
@@ -27,50 +32,146 @@ function action(
   return { id, device_id: deviceId, occurred_at: occurredAt, kind };
 }
 
+let eventSequence = 0;
+
+function nextEventId(): string {
+  eventSequence += 1;
+  return `00000000-0000-4000-8000-${eventSequence.toString().padStart(12, "0")}`;
+}
+
+function simpleAction(
+  deviceId: string,
+  hoursAgo: number,
+  minutesAgo: number,
+  kind: "CollectorStarted" | "CollectorStopped" | "Heartbeat",
+): UserAction {
+  return action(nextEventId(), deviceId, at(hoursAgo, minutesAgo), kind);
+}
+
+function focusedApp(
+  deviceId: string,
+  hoursAgo: number,
+  minutesAgo: number,
+  appId: string,
+  title: string | null,
+): UserAction {
+  return action(nextEventId(), deviceId, at(hoursAgo, minutesAgo), {
+    FocusedApplicationChanged: { app_id: appId, title },
+  });
+}
+
+function idleChanged(
+  deviceId: string,
+  hoursAgo: number,
+  minutesAgo: number,
+  idle: boolean,
+): UserAction {
+  return action(nextEventId(), deviceId, at(hoursAgo, minutesAgo), {
+    IdleChanged: { idle },
+  });
+}
+
+function adapterStatus(
+  deviceId: string,
+  hoursAgo: number,
+  minutesAgo: number,
+  adapterId: string,
+  observationType: ObservationType,
+  status: AdapterStatus,
+): UserAction {
+  return action(nextEventId(), deviceId, at(hoursAgo, minutesAgo), {
+    AdapterStatus: {
+      adapter_id: adapterId,
+      observation_type: observationType,
+      status,
+    },
+  });
+}
+
 const actionsByUser: Record<string, UserAction[]> = {
   [users[0].id]: [
-    action("3d90af82-d897-4406-ab03-fbeee2b72095", deviceIds.laptop, at(7, 40), "CollectorStarted"),
-    action("7966ed44-cd50-4adc-861b-b074509d625c", deviceIds.laptop, at(7, 39), {
-      AdapterStatus: {
-        adapter_id: "windows-input",
-        observation_type: "Keyboard",
-        status: "Available",
-      },
-    }),
-    action("5efc4120-fccb-45d4-bff9-d8b37785884f", deviceIds.laptop, at(7, 25), {
-      FocusedApplicationChanged: { app_id: "code", title: "TimeTracker — Visual Studio Code" },
-    }),
-    action("46f780c9-83ca-4d5e-8a36-8f6636f0b315", deviceIds.laptop, at(5, 15), {
-      IdleChanged: { idle: true },
-    }),
-    action("ce427f27-b6ee-46d0-8631-fe1f4778d41a", deviceIds.laptop, at(5, 2), {
-      IdleChanged: { idle: false },
-    }),
-    action("9c517198-f514-4f89-a75a-c82702434e84", deviceIds.laptop, at(2, 30), {
-      FocusedApplicationChanged: { app_id: "firefox", title: "Project planning" },
-    }),
-    action("6c7770f5-3538-4712-8154-07c74178e43f", deviceIds.laptop, at(0, 6), "Heartbeat"),
+    simpleAction(deviceIds.laptop, 7, 50, "CollectorStarted"),
+    adapterStatus(
+      deviceIds.laptop,
+      7,
+      47,
+      "windows-keyboard",
+      "Keyboard",
+      { Unavailable: { reason: "Driver was still starting" } },
+    ),
+    adapterStatus(deviceIds.laptop, 7, 44, "windows-keyboard", "Keyboard", "Available"),
+    adapterStatus(deviceIds.laptop, 7, 43, "window-focus", "FocusedApplication", "Available"),
+    adapterStatus(deviceIds.laptop, 7, 42, "idle-monitor", "Idle", "Available"),
+    adapterStatus(deviceIds.laptop, 7, 41, "pointer-click", "MouseClick", "Available"),
+    adapterStatus(deviceIds.laptop, 7, 40, "pointer-motion", "MouseMove", "Available"),
+    focusedApp(deviceIds.laptop, 7, 35, "code", "TimeTracker — Visual Studio Code"),
+    focusedApp(deviceIds.laptop, 6, 58, "firefox", "API documentation"),
+    focusedApp(deviceIds.laptop, 6, 43, "code", "UserPage.tsx — TimeTracker"),
+    focusedApp(deviceIds.laptop, 6, 35, "slack", "engineering-team"),
+    focusedApp(deviceIds.laptop, 6, 18, "code", "analytics.ts — TimeTracker"),
+    idleChanged(deviceIds.laptop, 5, 15, true),
+    idleChanged(deviceIds.laptop, 5, 2, false),
+    focusedApp(deviceIds.laptop, 4, 48, "terminal", "npm run dev"),
+    focusedApp(deviceIds.laptop, 4, 37, "code", "SensorStatusGrid.tsx — TimeTracker"),
+    focusedApp(deviceIds.laptop, 4, 12, "notion", "Sprint plan"),
+    focusedApp(deviceIds.laptop, 3, 55, "firefox", "Pull request #21"),
+    focusedApp(deviceIds.laptop, 3, 47, "slack", "frontend-team"),
+    focusedApp(deviceIds.laptop, 3, 34, "code", "AppActivityChart.tsx — TimeTracker"),
+    focusedApp(deviceIds.laptop, 2, 30, "firefox", "Project planning"),
+    focusedApp(deviceIds.laptop, 2, 18, "code", "UserPage.tsx — TimeTracker"),
+    focusedApp(deviceIds.laptop, 2, 5, "slack", "design-review"),
+    focusedApp(deviceIds.laptop, 1, 57, "firefox", "Recharts documentation"),
+    focusedApp(deviceIds.laptop, 1, 43, "code", "analytics.ts — TimeTracker"),
+    focusedApp(deviceIds.laptop, 1, 30, "terminal", "npm run build"),
+    focusedApp(deviceIds.laptop, 1, 20, "code", "TimeTracker — Visual Studio Code"),
+    focusedApp(deviceIds.laptop, 0, 58, "firefox", "Pull request #21"),
+    focusedApp(deviceIds.laptop, 0, 52, "slack", "frontend-team"),
+    focusedApp(deviceIds.laptop, 0, 44, "code", "TimeTracker — Visual Studio Code"),
+    idleChanged(deviceIds.laptop, 0, 30, true),
+    adapterStatus(
+      deviceIds.laptop,
+      0,
+      27,
+      "pointer-click",
+      "MouseClick",
+      { Unavailable: { reason: "Accessibility permission was revoked" } },
+    ),
+    idleChanged(deviceIds.laptop, 0, 18, false),
+    focusedApp(deviceIds.laptop, 0, 14, "terminal", "git status"),
+    simpleAction(deviceIds.laptop, 0, 6, "Heartbeat"),
   ],
   [users[1].id]: [
-    action("de971106-ea83-4038-90cc-58ddb3fb7733", deviceIds.desktop, at(9), "CollectorStarted"),
-    action("61bc3339-f5d0-474b-ae92-470c819b1b4d", deviceIds.desktop, at(8, 40), {
-      FocusedApplicationChanged: { app_id: "slack", title: "engineering-team" },
-    }),
-    action("4cb0b873-c67f-419b-836c-39d3f189bfa4", deviceIds.desktop, at(6, 5), {
-      AdapterStatus: {
-        adapter_id: "window-focus",
-        observation_type: "FocusedApplication",
-        status: { Unavailable: { reason: "Permission temporarily revoked" } },
-      },
-    }),
-    action("f0fc09c6-9634-48fd-a4dc-e453f7c8b279", deviceIds.desktop, at(1, 15), "Heartbeat"),
+    simpleAction(deviceIds.desktop, 9, 0, "CollectorStarted"),
+    adapterStatus(deviceIds.desktop, 8, 58, "x11-focus", "FocusedApplication", "Available"),
+    adapterStatus(deviceIds.desktop, 8, 57, "x11-idle", "Idle", "Available"),
+    adapterStatus(deviceIds.desktop, 8, 56, "evdev-keyboard", "Keyboard", "Available"),
+    focusedApp(deviceIds.desktop, 8, 40, "slack", "engineering-team"),
+    focusedApp(deviceIds.desktop, 7, 30, "idea", "Backend — IntelliJ IDEA"),
+    focusedApp(deviceIds.desktop, 6, 42, "firefox", "Axum documentation"),
+    focusedApp(deviceIds.desktop, 6, 33, "idea", "dashboard.rs — Backend"),
+    idleChanged(deviceIds.desktop, 4, 20, true),
+    idleChanged(deviceIds.desktop, 4, 5, false),
+    focusedApp(deviceIds.desktop, 2, 18, "terminal", "cargo test"),
+    focusedApp(deviceIds.desktop, 2, 7, "idea", "Backend — IntelliJ IDEA"),
+    simpleAction(deviceIds.desktop, 1, 15, "Heartbeat"),
   ],
   [users[2].id]: [
-    action("fcda1f09-1e7c-44b7-bbdb-08196a5f0ca5", deviceIds.laptop, at(26), "CollectorStarted"),
-    action("d978935c-e531-4e6b-a654-416d29bc4926", deviceIds.laptop, at(25, 48), {
-      FocusedApplicationChanged: { app_id: "terminal", title: null },
-    }),
-    action("b5f7df29-485b-4844-8929-f11df396e141", deviceIds.laptop, at(24, 30), "CollectorStopped"),
+    simpleAction(deviceIds.laptop, 6, 10, "CollectorStarted"),
+    adapterStatus(deviceIds.laptop, 6, 8, "macos-focus", "FocusedApplication", "Available"),
+    adapterStatus(
+      deviceIds.laptop,
+      6,
+      7,
+      "macos-keyboard",
+      "Keyboard",
+      { Unavailable: { reason: "Input monitoring permission is missing" } },
+    ),
+    focusedApp(deviceIds.laptop, 6, 0, "terminal", null),
+    focusedApp(deviceIds.laptop, 5, 25, "safari", "Team calendar"),
+    focusedApp(deviceIds.laptop, 5, 12, "terminal", "tmux"),
+    focusedApp(deviceIds.laptop, 3, 40, "figma", "TimeTracker dashboard"),
+    focusedApp(deviceIds.laptop, 3, 27, "safari", "Design system"),
+    simpleAction(deviceIds.laptop, 0, 45, "CollectorStopped"),
   ],
 };
 
