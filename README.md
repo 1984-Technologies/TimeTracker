@@ -18,19 +18,24 @@ The demo intentionally uses in-memory storage, so collected events are cleared w
 restarts. `HTTP_PORT` and `GRPC_PORT` can be set before starting Compose to change the published
 ports.
 
-## Run the Linux client
+## Run the desktop client
 
 Build and start the client on the laptop that should report online status:
 
 ```bash
 cargo build --release -p timetracker-client
-TIMETRACKER_SERVER=http://YOUR_SERVER:50051 \
-  ./target/release/timetracker-client
+./target/release/timetracker-client \
+  --grpc-address http://YOUR_SERVER:50051 \
+  --heartbeat-seconds 30
 ```
 
 The client stores a stable device ID under `$XDG_STATE_HOME/timetracker/device-id`, or under
 `$HOME/.local/state/timetracker/device-id` when `XDG_STATE_HOME` is unset. It retries while the
 server is unavailable. Set `TIMETRACKER_HEARTBEAT_SECONDS` to change the default 30-second interval.
+`TIMETRACKER_SERVER` remains available as an environment-variable alternative to
+`--grpc-address`. Run the client with `--help` to see all CLI options. On macOS the client starts
+the desktop observation adapters; on other operating systems it sends collector lifecycle events
+and heartbeats.
 
 ## Local development
 

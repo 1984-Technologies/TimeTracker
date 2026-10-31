@@ -3,7 +3,7 @@ use std::io;
 use timetracker_model::{
     AdapterStatus, DeviceId, Event, EventId, EventKind, ObservationKind, ObservationType,
 };
-use tonic::transport::Channel;
+use tonic::transport::{Channel, Endpoint};
 
 use crate::ClientError;
 
@@ -23,12 +23,14 @@ pub struct GrpcUploadClient {
 
 impl GrpcUploadClient {
     pub async fn connect(address: impl Into<String>) -> Result<Self, ClientError> {
-        let client = ClientMetricsUploaderClient::connect(address.into()).await?;
+        let address = normalize_address(address.into());
+        let channel = Endpoint::from_shared(address)?.connect_lazy();
+        let client = ClientMetricsUploaderClient::new(channel);
         Ok(Self { client })
     }
 
     pub async fn send(
-        &mut self,
+        &self,
         device_id: DeviceId,
         events: &[Event],
     ) -> Result<Vec<EventId>, ClientError> {
@@ -38,6 +40,7 @@ impl GrpcUploadClient {
             .collect::<Result<Vec<_>, ClientError>>()?;
         let response = self
             .client
+            .clone()
             .upload_events(UploadEventsRequest {
                 device_id: device_id.0.to_string(),
                 events,
@@ -54,6 +57,14 @@ impl GrpcUploadClient {
                     .map_err(|error| Box::new(error) as ClientError)
             })
             .collect()
+    }
+}
+
+fn normalize_address(address: String) -> String {
+    if address.contains("://") {
+        address
+    } else {
+        format!("http://{address}")
     }
 }
 

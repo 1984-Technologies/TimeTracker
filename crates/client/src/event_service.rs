@@ -34,36 +34,50 @@ impl ClientEventService {
         mut outputs: mpsc::Receiver<AdapterOutput>,
     ) -> Result<(), ClientError> {
         while let Some(adapter_output) = outputs.recv().await {
-            let kind = match adapter_output {
-                AdapterOutput::Observation(observation) => EventKind::Observation(observation.kind),
+            let (occurred_at, kind) = match adapter_output {
+                AdapterOutput::Observation(observation) => (
+                    observation.occurred_at,
+                    EventKind::Observation(observation.kind),
+                ),
                 AdapterOutput::Status {
                     adapter_id,
                     observation_type,
                     status,
-                } => EventKind::AdapterStatus {
-                    adapter_id: adapter_id.to_owned(),
-                    observation_type,
-                    status,
-                },
+                } => (
+                    OffsetDateTime::now_utc(),
+                    EventKind::AdapterStatus {
+                        adapter_id: adapter_id.to_owned(),
+                        observation_type,
+                        status,
+                    },
+                ),
             };
-            self.enqueue_kind(kind).await?;
+            self.enqueue(occurred_at, kind).await?;
         }
         Ok(())
     }
 
     pub async fn enqueue_kind(&self, kind: EventKind) -> Result<(), ClientError> {
+        self.enqueue(OffsetDateTime::now_utc(), kind).await
+    }
+
+    async fn enqueue(
+        &self,
+        occurred_at: OffsetDateTime,
+        kind: EventKind,
+    ) -> Result<(), ClientError> {
         self.queue
             .push(Event {
                 id: EventId(Uuid::new_v4()),
                 device_id: self.device_id,
-                occurred_at: OffsetDateTime::now_utc(),
+                occurred_at,
                 kind,
             })
             .await
     }
 
     pub async fn upload_loop(
-        &mut self,
+        &self,
         mut shutdown: watch::Receiver<bool>,
     ) -> Result<(), ClientError> {
         loop {
@@ -80,8 +94,25 @@ impl ClientEventService {
                 }
             }
             let events = self.queue.pending(Self::LIMIT).await?;
-            let event_ids = self.upload_client.send(self.device_id, &events).await?;
-            self.queue.acknowledge(&event_ids).await?;
+            match self.upload_client.send(self.device_id, &events).await {
+                Ok(event_ids) => {
+                    self.queue.acknowledge(&event_ids).await?;
+                    if event_ids.is_empty() {
+                        wait_before_retry(&mut shutdown).await;
+                    }
+                }
+                Err(error) => {
+                    eprintln!("event upload failed: {error}; retrying in 3 seconds");
+                    wait_before_retry(&mut shutdown).await;
+                }
+            }
         }
+    }
+}
+
+async fn wait_before_retry(shutdown: &mut watch::Receiver<bool>) {
+    tokio::select! {
+        _ = tokio::time::sleep(std::time::Duration::from_secs(3)) => {}
+        _ = shutdown.changed() => {}
     }
 }
