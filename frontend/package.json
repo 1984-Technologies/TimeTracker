@@ -9,6 +9,7 @@
     "dev:real": "vite --mode real",
     "mock": "tsx mock-server/server.ts",
     "build": "tsc -b && vite build",
+    "lint": "npm run typecheck",
     "test": "tsx --test tests/analytics.test.ts",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview"
