@@ -3,9 +3,9 @@ use timetracker_model::DeviceId;
 use crate::ClientError;
 use std::env;
 use std::fs::OpenOptions;
-use std::path::Path;
 use std::io::Read;
 use std::io::Write;
+use std::path::Path;
 use uuid::Uuid;
 
 pub struct InstallationIdentity;
@@ -27,8 +27,8 @@ impl InstallationIdentity {
                 let id = Uuid::new_v4();
                 file.write_all(id.to_string().as_bytes())?;
                 Ok(DeviceId(id))
-            },
-            id => Ok(DeviceId(Uuid::parse_str(id)?))
+            }
+            id => Ok(DeviceId(Uuid::parse_str(id)?)),
         }
     }
 }

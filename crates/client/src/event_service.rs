@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use timetracker_model::{DeviceId, EventKind, Event, EventId};
-use tokio::sync::{mpsc, watch};
 use time::OffsetDateTime;
+use timetracker_model::{DeviceId, Event, EventId, EventKind};
+use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
 
 use crate::{ClientError, adapters::AdapterOutput, queue::EventQueue, upload::GrpcUploadClient};
@@ -31,56 +31,55 @@ impl ClientEventService {
 
     pub async fn record_outputs(
         &self,
-        mut _outputs: mpsc::Receiver<AdapterOutput>,
+        mut outputs: mpsc::Receiver<AdapterOutput>,
     ) -> Result<(), ClientError> {
-        loop {
-            let adapter_output = _outputs.recv().await;
-            match adapter_output {
-                None => (),
-                Some(AdapterOutput::Observation(observation)) => {
+        while let Some(output) = outputs.recv().await {
+            match output {
+                AdapterOutput::Observation(observation) => {
                     let event_id = EventId(Uuid::new_v4());
-                    self.queue.push(
-                        Event {
+                    self.queue
+                        .push(Event {
                             id: event_id,
                             device_id: self.device_id,
                             occurred_at: observation.occurred_at,
-                            kind: EventKind::Observation(observation.kind)
-                        }
-                    ).await?;
-                },
-                Some(AdapterOutput::Status {
+                            kind: EventKind::Observation(observation.kind),
+                        })
+                        .await?;
+                }
+                AdapterOutput::Status {
                     adapter_id,
                     observation_type,
-                    status
-                }) => {
+                    status,
+                } => {
                     let event_id = EventId(Uuid::new_v4());
                     let timestamp = OffsetDateTime::now_utc();
-                    self.queue.push(
-                        Event {
+                    self.queue
+                        .push(Event {
                             id: event_id,
                             device_id: self.device_id,
                             occurred_at: timestamp,
                             kind: EventKind::AdapterStatus {
                                 adapter_id: adapter_id.to_string(),
                                 observation_type: observation_type,
-                                status: status
-                            }
-                        }
-                    ).await?;
+                                status: status,
+                            },
+                        })
+                        .await?;
                 }
             };
         }
+        Ok(())
     }
 
     pub async fn enqueue_kind(&self, _kind: EventKind) -> Result<(), ClientError> {
-        self.queue.push(
-            Event {
+        self.queue
+            .push(Event {
                 id: EventId(Uuid::new_v4()),
                 device_id: self.device_id,
                 occurred_at: OffsetDateTime::now_utc(),
-                kind: _kind
-            }
-        ).await
+                kind: _kind,
+            })
+            .await
     }
 
     pub async fn upload_loop(&self, _shutdown: watch::Receiver<bool>) -> Result<(), ClientError> {

@@ -1,6 +1,6 @@
-use tokio::task::JoinHandle;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
+use tokio::task::JoinHandle;
 
 use crate::{
     ClientError,
@@ -15,7 +15,7 @@ pub struct CollectionSupervisor {
 impl CollectionSupervisor {
     pub async fn start(
         _adapters: Vec<Box<dyn DesktopAdapter>>,
-        _output: mpsc::Sender<AdapterOutput>
+        _output: mpsc::Sender<AdapterOutput>,
     ) -> Self {
         todo!()
     }
