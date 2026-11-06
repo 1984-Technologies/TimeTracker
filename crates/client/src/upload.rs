@@ -81,28 +81,53 @@ impl GrpcUploadClient {
                             title: title.clone().unwrap_or("".to_string()),
                         }
                     }),
-                    timetracker_model::ObservationKind::KeyboardButtonPressed {} => {
+                    timetracker_model::ObservationKind::KeyboardButtonPressed { key } => {
                         proto!(protos::EventMessage {
                             id: id,
                             device_id: event_device_id,
                             occurred_at_unix_nanos: occurred_at,
-                            keyboard_button_pressed: true,
+                            keyboard_button_pressed: protos::KeyboardButtonPressedMessage {
+                                key: key.clone(),
+                            },
                         })
                     }
-                    timetracker_model::ObservationKind::MouseClicked {} => {
+
+                    timetracker_model::ObservationKind::MouseClicked { button, x, y } => {
+                        let mut mouse_clicked = protos::MouseClickedMessage::new();
+
+                        mouse_clicked.set_button(button.clone());
+
+                        if let Some(x) = x {
+                            mouse_clicked.set_x(*x);
+                        }
+
+                        if let Some(y) = y {
+                            mouse_clicked.set_y(*y);
+                        }
+
                         proto!(protos::EventMessage {
                             id: id,
                             device_id: event_device_id,
                             occurred_at_unix_nanos: occurred_at,
-                            mouse_clicked: true,
+                            mouse_clicked: mouse_clicked,
                         })
                     }
-                    timetracker_model::ObservationKind::MouseMoved {} => {
+
+                    timetracker_model::ObservationKind::MouseMoved { x, y } => {
                         proto!(protos::EventMessage {
                             id: id,
                             device_id: event_device_id,
                             occurred_at_unix_nanos: occurred_at,
-                            mouse_moved: true,
+                            mouse_moved: protos::MouseMovedMessage { x: *x, y: *y },
+                        })
+                    }
+
+                    timetracker_model::ObservationKind::SystemSleepChanged { sleeping } => {
+                        proto!(protos::EventMessage {
+                            id: id,
+                            device_id: event_device_id,
+                            occurred_at_unix_nanos: occurred_at,
+                            system_sleep_changed: *sleeping,
                         })
                     }
                 },

@@ -15,7 +15,10 @@ async fn main() {
         .await
         .expect("Could not obtain device id");
     let event_queue = EventQueue::new();
-    let upload_client = GrpcUploadClient::new();
+    let grpc_server_addr =
+        std::env::var("GRPC_SERVER_ADDR").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
+
+    let upload_client = GrpcUploadClient::new(format!("dns:///{grpc_server_addr}"));
     let buffer_capacity = 100; // TODO
     let event_service = Arc::new(ClientEventService::new(
         device_id,

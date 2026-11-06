@@ -27,3 +27,9 @@ pub trait DesktopAdapter: Send {
         shutdown: watch::Receiver<bool>,
     ) -> Result<(), ClientError>;
 }
+
+#[cfg(target_os = "macos")]
+pub mod macos;
+
+#[cfg(target_os = "macos")]
+pub use macos::{MacOsAdapterRuntime, MacOsRuntimeShutdownHandle, default_adapters};
