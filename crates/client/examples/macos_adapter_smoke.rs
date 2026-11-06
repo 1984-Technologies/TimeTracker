@@ -3,7 +3,7 @@ use std::{io, thread};
 
 #[cfg(target_os = "macos")]
 use timetracker_client::{
-    adapters::{AdapterOutput, MacOsAdapterRuntime},
+    adapters::{AdapterOutput, default_adapters},
     supervisor::CollectionSupervisor,
 };
 #[cfg(target_os = "macos")]
@@ -12,18 +12,10 @@ use tokio::sync::mpsc;
 #[cfg(target_os = "macos")]
 #[tokio::main]
 async fn main() {
-    let mut runtime = match MacOsAdapterRuntime::new() {
-        Ok(runtime) => runtime,
+    let (runtime, adapters) = match default_adapters() {
+        Ok(result) => result,
         Err(error) => {
-            eprintln!("[ERROR] failed to initialize macOS adapter runtime: {error}");
-            return;
-        }
-    };
-
-    let adapters = match runtime.default_adapters() {
-        Ok(adapters) => adapters,
-        Err(error) => {
-            eprintln!("[ERROR] failed to create adapters: {error}");
+            eprintln!("[ERROR] failed to initialize macOS adapters: {error}");
             return;
         }
     };

@@ -13,6 +13,17 @@ pub use idle::IdleAdapter;
 pub use input::{KeyboardAdapter, MouseClickAdapter, MouseMoveAdapter};
 pub use runtime::{MacOsAdapterRuntime, MacOsRuntimeShutdownHandle};
 
+/// Creates the standard macOS adapters and the runtime that owns NSWorkspace.
+///
+/// Keep the returned runtime alive while the adapters are running. Its `run` method
+/// must be called on the macOS main thread.
+pub fn default_adapters()
+-> Result<(MacOsAdapterRuntime, Vec<Box<dyn super::DesktopAdapter>>), crate::ClientError> {
+    let mut runtime = MacOsAdapterRuntime::new()?;
+    let adapters = runtime.take_default_adapters()?;
+    Ok((runtime, adapters))
+}
+
 pub(super) fn unavailable(reason: impl Into<String>) -> AdapterStatus {
     AdapterStatus::Unavailable {
         reason: reason.into(),

@@ -32,4 +32,4 @@ pub trait DesktopAdapter: Send {
 pub mod macos;
 
 #[cfg(target_os = "macos")]
-pub use macos::{MacOsAdapterRuntime, MacOsRuntimeShutdownHandle};
+pub use macos::{MacOsAdapterRuntime, MacOsRuntimeShutdownHandle, default_adapters};

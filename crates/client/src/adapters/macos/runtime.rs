@@ -84,7 +84,9 @@ impl MacOsAdapterRuntime {
         })
     }
 
-    pub fn default_adapters(&mut self) -> Result<Vec<Box<dyn DesktopAdapter>>, ClientError> {
+    pub(super) fn take_default_adapters(
+        &mut self,
+    ) -> Result<Vec<Box<dyn DesktopAdapter>>, ClientError> {
         let focused_application_events = self
             .focused_application_events
             .take()
