@@ -4,6 +4,9 @@ use tokio::sync::{mpsc, watch};
 
 use crate::ClientError;
 
+#[cfg(target_os = "windows")]
+pub mod windows;
+
 pub enum AdapterOutput {
     Observation(Observation),
     Status {
