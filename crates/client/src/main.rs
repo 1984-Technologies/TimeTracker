@@ -15,7 +15,9 @@ async fn main() {
         .await
         .expect("Could not obtain device id");
     let event_queue = EventQueue::new();
-    let upload_client = GrpcUploadClient::new();
+    let address =
+        std::env::var("GRPC_SERVER_ADDR").unwrap_or_else(|_| "localhost:50051".to_string());
+    let upload_client = GrpcUploadClient::new(address);
     let buffer_capacity = 100; // TODO
     let event_service = Arc::new(ClientEventService::new(
         device_id,
@@ -31,7 +33,7 @@ async fn main() {
     let mut shutdown_receiver1 = shutdown_receiver.clone();
     let supervisor_handle = tokio::spawn(async move {
         let collection_supervisor = CollectionSupervisor::start(adapters, send).await;
-        let _ = shutdown_receiver1.wait_for(|val| *val == true).await;
+        let _ = shutdown_receiver1.wait_for(|val| *val).await;
         let _ = collection_supervisor.stop().await;
     });
 

@@ -6,10 +6,12 @@ edition.workspace = true
 [dependencies]
 async-trait.workspace = true
 axum.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sqlx = { workspace = true, features = ["postgres"] }
 timetracker-model = { path = "../model" }
-time.workspace = true
+time = { workspace = true, features = ["serde-well-known"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 tonic = "0.12.3"
 uuid = { version = "1.26.1", features = ["v4"] }
 prost = "0.13.5"
@@ -18,3 +20,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 [build-dependencies]
 tonic-build = { version = "0.12.3", features = ["prost"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+uuid.workspace = true

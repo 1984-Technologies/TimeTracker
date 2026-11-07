@@ -39,6 +39,15 @@ impl fmt::Display for CollectionError {
 
 impl std::error::Error for CollectionError {}
 
+impl From<CollectionError> for BackendError {
+    fn from(error: CollectionError) -> Self {
+        match error {
+            CollectionError::UnknownDevice(_) => Self::NotFound(error.to_string()),
+            CollectionError::DeviceMismatch { .. } => Self::Validation(error.to_string()),
+        }
+    }
+}
+
 pub struct MetricsCollectionService {
     pub(crate) devices: Arc<dyn DeviceRepository>,
     pub(crate) events: Arc<dyn EventRepository>,
@@ -56,17 +65,19 @@ impl MetricsCollectionService {
     ) -> Result<CollectionReceipt, BackendError> {
         for event in events {
             if event.device_id != device_id {
-                return Err(Box::new(CollectionError::DeviceMismatch {
+                return Err(CollectionError::DeviceMismatch {
                     batch_device_id: device_id,
                     event_device_id: event.device_id,
-                }));
+                }
+                .into());
             }
         }
 
-        let user_id =
-            self.devices.owner_of(device_id).await?.ok_or_else(|| {
-                Box::new(CollectionError::UnknownDevice(device_id)) as BackendError
-            })?;
+        let user_id = self
+            .devices
+            .owner_of(device_id)
+            .await?
+            .ok_or(CollectionError::UnknownDevice(device_id))?;
 
         if events.is_empty() {
             return Ok(CollectionReceipt {
