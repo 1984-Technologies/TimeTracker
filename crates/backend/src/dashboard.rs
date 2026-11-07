@@ -83,18 +83,19 @@ impl DashboardService {
     ) -> Result<Vec<UserAction>, BackendError> {
         range.validate()?;
 
-        let mut actions = self.actions.user_actions(user_id, range.clone()).await?;
+        let mut actions = self.actions.user_actions(user_id, range).await?;
 
         let preceding = self.actions.preceding_actions(user_id, range.start).await?;
 
-        let existing_ids: HashSet<_> = actions.iter().map(|a| a.id).collect();
+        let mut existing_ids = HashSet::new();
+        actions.retain(|action| existing_ids.insert(action.id));
         for action in preceding {
-            if !existing_ids.contains(&action.id) {
+            if existing_ids.insert(action.id) {
                 actions.push(action);
             }
         }
 
-        actions.sort_by(|a, b| a.occurred_at.cmp(&b.occurred_at).then(a.id.cmp(&b.id)));
+        actions.sort_by(|a, b| a.occurred_at.cmp(&b.occurred_at).then(a.id.0.cmp(&b.id.0)));
 
         Ok(actions)
     }
@@ -195,8 +196,8 @@ mod tests {
         preceding.kind = UserActionKind::CollectorStarted;
 
         let repo = MockUserActionRepository {
-            actions: vec![action1.clone(), action2.clone()],
-            preceding: vec![preceding, action3.clone()],
+            actions: vec![action1.clone(), action2.clone(), action2.clone()],
+            preceding: vec![preceding, action3.clone(), action3.clone()],
         };
 
         let service = DashboardService::new(
@@ -215,6 +216,25 @@ mod tests {
         assert_eq!(result[0].id, action1.id);
         assert_eq!(result[1].id, action2.id);
         assert_eq!(result[2].id, action3.id);
+    }
+
+    #[tokio::test]
+    async fn user_actions_orders_equal_timestamps_by_event_id() {
+        let timestamp = OffsetDateTime::from_unix_timestamp(20).unwrap();
+        let first = create_test_action(Uuid::from_u128(1), timestamp);
+        let second = create_test_action(Uuid::from_u128(2), timestamp);
+        let service = DashboardService::new(
+            Arc::new(MockUserRepository),
+            Arc::new(MockUserActionRepository {
+                actions: vec![second.clone(), first.clone()],
+                preceding: vec![],
+            }),
+        );
+        let result = service.user_actions(
+            UserId(Uuid::new_v4()),
+            TimeRange { start: timestamp, end: timestamp },
+        ).await.unwrap();
+        assert_eq!(result, vec![first, second]);
     }
 
     #[tokio::test]

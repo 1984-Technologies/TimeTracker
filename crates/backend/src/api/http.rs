@@ -33,7 +33,9 @@ impl HttpDashboardServer {
 
 #[derive(Debug, Deserialize)]
 struct ActionsQuery {
+    #[serde(with = "time::serde::rfc3339")]
     start: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     end: OffsetDateTime,
     #[serde(default = "default_limit")]
     limit: u32,
@@ -81,6 +83,17 @@ impl IntoResponse for HttpError {
 impl From<BackendError> for HttpError {
     fn from(e: BackendError) -> Self {
         HttpError::Backend(e)
+    }
+}
+
+async fn wait_for_shutdown(mut shutdown: watch::Receiver<bool>) {
+    loop {
+        if *shutdown.borrow_and_update() {
+            return;
+        }
+        if shutdown.changed().await.is_err() {
+            return;
+        }
     }
 }
 
@@ -147,11 +160,7 @@ impl ApiServer for HttpDashboardServer {
         let listener = tokio::net::TcpListener::bind(address).await?;
 
         axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                if shutdown.changed().await.is_err() {
-                    // sender dropped, shutdown
-                }
-            })
+            .with_graceful_shutdown(wait_for_shutdown(shutdown))
             .await?;
 
         Ok(())
@@ -162,6 +171,7 @@ impl ApiServer for HttpDashboardServer {
 mod tests {
     use super::*;
     use crate::repositories::{UserActionRepository, UserRepository};
+    use crate::dashboard::{UserAction, UserSummary};
     use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt;
@@ -208,6 +218,38 @@ mod tests {
             Arc::new(MockUserRepo),
             Arc::new(MockActionRepo),
         ))
+    }
+
+    #[tokio::test]
+    async fn shutdown_respects_initial_true_value() {
+        let (_sender, receiver) = watch::channel(true);
+        tokio::time::timeout(std::time::Duration::from_secs(1), wait_for_shutdown(receiver))
+            .await
+            .expect("an already requested shutdown must finish immediately");
+    }
+
+    #[tokio::test]
+    async fn shutdown_ignores_false_updates() {
+        let (sender, receiver) = watch::channel(false);
+        let shutdown = wait_for_shutdown(receiver);
+        tokio::pin!(shutdown);
+        sender.send(false).unwrap();
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(20), &mut shutdown)
+            .await
+            .is_err());
+        sender.send(true).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), shutdown)
+            .await
+            .expect("a true update must stop the server");
+    }
+
+    #[tokio::test]
+    async fn shutdown_finishes_when_sender_is_dropped() {
+        let (sender, receiver) = watch::channel(false);
+        drop(sender);
+        tokio::time::timeout(std::time::Duration::from_secs(1), wait_for_shutdown(receiver))
+            .await
+            .expect("a dropped sender must stop the server");
     }
 
     #[tokio::test]
