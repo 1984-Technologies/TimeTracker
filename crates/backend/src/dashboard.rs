@@ -21,9 +21,7 @@ pub struct TimeRange {
 impl TimeRange {
     pub fn validate(&self) -> Result<(), BackendError> {
         if self.start > self.end {
-            return Err(BackendError::Validation(
-                "start must be <= end".to_string(),
-            ));
+            return Err(BackendError::Validation("start must be <= end".to_string()));
         }
         Ok(())
     }
@@ -138,10 +136,7 @@ mod tests {
     #[test]
     fn time_range_validation_accepts_equal_range() {
         let ts = OffsetDateTime::from_unix_timestamp(50).unwrap();
-        let range = TimeRange {
-            start: ts,
-            end: ts,
-        };
+        let range = TimeRange { start: ts, end: ts };
         assert!(range.validate().is_ok());
     }
 
@@ -200,17 +195,17 @@ mod tests {
             preceding: vec![preceding, action3.clone(), action3.clone()],
         };
 
-        let service = DashboardService::new(
-            Arc::new(MockUserRepository),
-            Arc::new(repo),
-        );
+        let service = DashboardService::new(Arc::new(MockUserRepository), Arc::new(repo));
 
         let range = TimeRange {
             start: OffsetDateTime::from_unix_timestamp(15).unwrap(),
             end: OffsetDateTime::from_unix_timestamp(40).unwrap(),
         };
 
-        let result = service.user_actions(UserId(Uuid::new_v4()), range).await.unwrap();
+        let result = service
+            .user_actions(UserId(Uuid::new_v4()), range)
+            .await
+            .unwrap();
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].id, action1.id);
@@ -230,10 +225,16 @@ mod tests {
                 preceding: vec![],
             }),
         );
-        let result = service.user_actions(
-            UserId(Uuid::new_v4()),
-            TimeRange { start: timestamp, end: timestamp },
-        ).await.unwrap();
+        let result = service
+            .user_actions(
+                UserId(Uuid::new_v4()),
+                TimeRange {
+                    start: timestamp,
+                    end: timestamp,
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(result, vec![first, second]);
     }
 
@@ -252,17 +253,17 @@ mod tests {
             preceding: vec![action2.clone()],
         };
 
-        let service = DashboardService::new(
-            Arc::new(MockUserRepository),
-            Arc::new(repo),
-        );
+        let service = DashboardService::new(Arc::new(MockUserRepository), Arc::new(repo));
 
         let range = TimeRange {
             start: OffsetDateTime::from_unix_timestamp(5).unwrap(),
             end: OffsetDateTime::from_unix_timestamp(40).unwrap(),
         };
 
-        let result = service.user_actions(UserId(Uuid::new_v4()), range).await.unwrap();
+        let result = service
+            .user_actions(UserId(Uuid::new_v4()), range)
+            .await
+            .unwrap();
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].occurred_at, ts2);
@@ -304,17 +305,17 @@ mod tests {
             preceding: vec![action1.clone()],
         };
 
-        let service = DashboardService::new(
-            Arc::new(MockUserRepository),
-            Arc::new(repo),
-        );
+        let service = DashboardService::new(Arc::new(MockUserRepository), Arc::new(repo));
 
         let range = TimeRange {
             start: OffsetDateTime::from_unix_timestamp(15).unwrap(),
             end: OffsetDateTime::from_unix_timestamp(40).unwrap(),
         };
 
-        let result = service.user_actions(UserId(Uuid::new_v4()), range).await.unwrap();
+        let result = service
+            .user_actions(UserId(Uuid::new_v4()), range)
+            .await
+            .unwrap();
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].id, action1.id);

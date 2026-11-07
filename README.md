@@ -2,6 +2,14 @@
 
 Nothing special. Just another time tracker written in Rust.
 
+## Building
+
+Install Rust and the Protobuf compiler (`protoc`), and make sure both are available in `PATH`.
+The client uses Protobuf 4.34.0-release and requires the matching compiler (protoc 34.0).
+Then run `cargo check --workspace --all-targets` and `cargo test --workspace`.
+
+The client reads the gRPC server address from `GRPC_SERVER_ADDR` (default: `localhost:50051`).
+
 ## Roadmap
 ![roadmap of the project](assets/TimeTracker-Roadmap.jpg)
 

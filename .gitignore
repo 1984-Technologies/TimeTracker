@@ -2,6 +2,7 @@
 
 # Rust
 target/
+crates/client/generated/
 
 !.github/
 !.github/**

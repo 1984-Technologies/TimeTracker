@@ -1,7 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -12,10 +11,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use timetracker_model::UserId;
-use tokio::{
-    net::TcpListener,
-    sync::{watch, watch::Receiver},
-};
+use tokio::sync::watch;
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
@@ -39,6 +35,15 @@ impl HttpDashboardServer {
     pub fn router(&self) -> Router {
         Router::new()
             .route("/health", get(health_check))
+            .route("/users", get(list_users))
+            .route("/users/{id}/actions", get(user_actions))
+            .layer(TraceLayer::new_for_http())
+            .layer(
+                CorsLayer::new()
+                    .allow_origin(Any)
+                    .allow_methods(Any)
+                    .allow_headers(Any),
+            )
             .with_state(Arc::clone(&self.dashboard))
     }
 }
@@ -47,38 +52,16 @@ async fn health_check() -> StatusCode {
     StatusCode::OK
 }
 
-#[async_trait]
-impl ApiServer for HttpDashboardServer {
-    async fn serve(
-        &self,
-        address: SocketAddr,
-        mut shutdown: Receiver<bool>,
-    ) -> Result<(), BackendError> {
-        let app = self.router();
-
-        let listener = TcpListener::bind(address).await?;
-
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                while !*shutdown.borrow_and_update() {
-                    if shutdown.changed().await.is_err() {
-                        break;
-                    }
-                }
-            })
-            .await?;
-        Ok(())
-    }
-}
-
 #[cfg(test)]
-mod tests {
+mod health_tests {
     use super::*;
     use crate::dashboard::{TimeRange, UserAction, UserSummary};
     use crate::repositories::{UserActionRepository, UserRepository};
+    use async_trait::async_trait;
     use std::time::Duration;
     use timetracker_model::UserId;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
     use tokio::net::TcpStream;
     use tokio::sync::watch;
 
@@ -100,6 +83,13 @@ mod tests {
             &self,
             _id: UserId,
             _range: TimeRange,
+        ) -> Result<Vec<UserAction>, BackendError> {
+            Ok(vec![])
+        }
+        async fn preceding_actions(
+            &self,
+            _id: UserId,
+            _before: OffsetDateTime,
         ) -> Result<Vec<UserAction>, BackendError> {
             Ok(vec![])
         }
@@ -189,9 +179,7 @@ impl IntoResponse for HttpError {
                 };
                 (status, e.to_string()).into_response()
             }
-            HttpError::BadRequest(msg) => {
-                (StatusCode::BAD_REQUEST, msg).into_response()
-            }
+            HttpError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
         }
     }
 }
@@ -261,17 +249,7 @@ impl ApiServer for HttpDashboardServer {
         address: SocketAddr,
         shutdown: watch::Receiver<bool>,
     ) -> Result<(), BackendError> {
-        let cors = CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any);
-
-        let app = Router::new()
-            .route("/users", get(list_users))
-            .route("/users/{id}/actions", get(user_actions))
-            .layer(TraceLayer::new_for_http())
-            .layer(cors)
-            .with_state(self.dashboard.clone());
+        let app = self.router();
 
         let listener = tokio::net::TcpListener::bind(address).await?;
 
@@ -286,8 +264,8 @@ impl ApiServer for HttpDashboardServer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repositories::{UserActionRepository, UserRepository};
     use crate::dashboard::{UserAction, UserSummary};
+    use crate::repositories::{UserActionRepository, UserRepository};
     use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt;
@@ -339,9 +317,12 @@ mod tests {
     #[tokio::test]
     async fn shutdown_respects_initial_true_value() {
         let (_sender, receiver) = watch::channel(true);
-        tokio::time::timeout(std::time::Duration::from_secs(1), wait_for_shutdown(receiver))
-            .await
-            .expect("an already requested shutdown must finish immediately");
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            wait_for_shutdown(receiver),
+        )
+        .await
+        .expect("an already requested shutdown must finish immediately");
     }
 
     #[tokio::test]
@@ -350,9 +331,11 @@ mod tests {
         let shutdown = wait_for_shutdown(receiver);
         tokio::pin!(shutdown);
         sender.send(false).unwrap();
-        assert!(tokio::time::timeout(std::time::Duration::from_millis(20), &mut shutdown)
-            .await
-            .is_err());
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(20), &mut shutdown)
+                .await
+                .is_err()
+        );
         sender.send(true).unwrap();
         tokio::time::timeout(std::time::Duration::from_secs(1), shutdown)
             .await
@@ -363,19 +346,25 @@ mod tests {
     async fn shutdown_finishes_when_sender_is_dropped() {
         let (sender, receiver) = watch::channel(false);
         drop(sender);
-        tokio::time::timeout(std::time::Duration::from_secs(1), wait_for_shutdown(receiver))
-            .await
-            .expect("a dropped sender must stop the server");
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            wait_for_shutdown(receiver),
+        )
+        .await
+        .expect("a dropped sender must stop the server");
     }
 
     #[tokio::test]
     async fn test_list_users_returns_200() {
-        let app = Router::new()
-            .route("/users", get(list_users))
-            .with_state(create_test_dashboard());
+        let app = HttpDashboardServer::new(create_test_dashboard()).router();
 
         let response = app
-            .oneshot(Request::builder().uri("/users").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/users")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -384,17 +373,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_returns_200() {
-        let app = Router::new()
-            .route("/users/{id}/actions", get(user_actions))
-            .with_state(create_test_dashboard());
+        let app = HttpDashboardServer::new(create_test_dashboard()).router();
 
         let start = OffsetDateTime::from_unix_timestamp(100).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(200).unwrap();
         let uri = format!(
             "/users/{}/actions?start={}&end={}",
             Uuid::new_v4(),
-            start.format(&time::format_description::well_known::Rfc3339).unwrap(),
-            end.format(&time::format_description::well_known::Rfc3339).unwrap(),
+            start
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
+            end.format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
         );
 
         let response = app
@@ -407,17 +397,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_rejects_invalid_range() {
-        let app = Router::new()
-            .route("/users/{id}/actions", get(user_actions))
-            .with_state(create_test_dashboard());
+        let app = HttpDashboardServer::new(create_test_dashboard()).router();
 
         let start = OffsetDateTime::from_unix_timestamp(200).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(100).unwrap();
         let uri = format!(
             "/users/{}/actions?start={}&end={}",
             Uuid::new_v4(),
-            start.format(&time::format_description::well_known::Rfc3339).unwrap(),
-            end.format(&time::format_description::well_known::Rfc3339).unwrap(),
+            start
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
+            end.format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
         );
 
         let response = app
@@ -430,17 +421,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_rejects_zero_limit() {
-        let app = Router::new()
-            .route("/users/{id}/actions", get(user_actions))
-            .with_state(create_test_dashboard());
+        let app = HttpDashboardServer::new(create_test_dashboard()).router();
 
         let start = OffsetDateTime::from_unix_timestamp(100).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(200).unwrap();
         let uri = format!(
             "/users/{}/actions?start={}&end={}&limit=0",
             Uuid::new_v4(),
-            start.format(&time::format_description::well_known::Rfc3339).unwrap(),
-            end.format(&time::format_description::well_known::Rfc3339).unwrap(),
+            start
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
+            end.format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
         );
 
         let response = app
@@ -453,17 +445,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_rejects_limit_too_large() {
-        let app = Router::new()
-            .route("/users/{id}/actions", get(user_actions))
-            .with_state(create_test_dashboard());
+        let app = HttpDashboardServer::new(create_test_dashboard()).router();
 
         let start = OffsetDateTime::from_unix_timestamp(100).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(200).unwrap();
         let uri = format!(
             "/users/{}/actions?start={}&end={}&limit=1001",
             Uuid::new_v4(),
-            start.format(&time::format_description::well_known::Rfc3339).unwrap(),
-            end.format(&time::format_description::well_known::Rfc3339).unwrap(),
+            start
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
+            end.format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
         );
 
         let response = app
