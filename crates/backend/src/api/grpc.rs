@@ -93,14 +93,36 @@ fn convert_proto_event(
                 title: app.title,
             })
         }
-        event_message::Kind::KeyboardButtonPressed(_) => {
-            EventKind::Observation(ObservationKind::KeyboardButtonPressed {})
+        event_message::Kind::KeyboardButtonPressed(keyboard) => {
+            if keyboard.key.trim().is_empty() {
+                return Err(Status::invalid_argument(
+                    "KeyboardButtonPressed.key cannot be empty",
+                ));
+            }
+
+            EventKind::Observation(ObservationKind::KeyboardButtonPressed { key: keyboard.key })
         }
-        event_message::Kind::MouseClicked(_) => {
-            EventKind::Observation(ObservationKind::MouseClicked {})
+        event_message::Kind::MouseClicked(mouse) => {
+            if mouse.button.trim().is_empty() {
+                return Err(Status::invalid_argument(
+                    "MouseClicked.button cannot be empty",
+                ));
+            }
+
+            EventKind::Observation(ObservationKind::MouseClicked {
+                button: mouse.button,
+                x: mouse.x,
+                y: mouse.y,
+            })
         }
-        event_message::Kind::MouseMoved(_) => {
-            EventKind::Observation(ObservationKind::MouseMoved {})
+        event_message::Kind::MouseMoved(mouse) => {
+            EventKind::Observation(ObservationKind::MouseMoved {
+                x: mouse.x,
+                y: mouse.y,
+            })
+        }
+        event_message::Kind::SystemSleepChanged(sleeping) => {
+            EventKind::Observation(ObservationKind::SystemSleepChanged { sleeping })
         }
         event_message::Kind::AdapterStatus(status_msg) => convert_adapter_status(status_msg)?,
     };

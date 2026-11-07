@@ -27,6 +27,7 @@ enum ObservationTypeProto {
 message AdapterStatusMessage {
   string adapter_id = 1;
   ObservationTypeProto observation_type = 2;
+
   oneof status {
     bool available = 3;
     string unavailable_reason = 4;
@@ -36,6 +37,21 @@ message AdapterStatusMessage {
 message FocusedApplicationChangedMessage {
   string app_id = 1;
   optional string title = 2;
+}
+
+message KeyboardButtonPressedMessage {
+  string key = 1;
+}
+
+message MouseClickedMessage {
+  string button = 1;
+  optional int32 x = 2;
+  optional int32 y = 3;
+}
+
+message MouseMovedMessage {
+  int32 x = 1;
+  int32 y = 2;
 }
 
 message EventMessage {
@@ -48,10 +64,13 @@ message EventMessage {
     bool collector_stopped = 5;
     bool heartbeat = 6;
     bool idle_changed = 7;
+
     FocusedApplicationChangedMessage focused_application_changed = 8;
-    bool keyboard_button_pressed = 9;
-    bool mouse_clicked = 10;
-    bool mouse_moved = 11;
+    KeyboardButtonPressedMessage keyboard_button_pressed = 9;
+    MouseClickedMessage mouse_clicked = 10;
+    MouseMovedMessage mouse_moved = 11;
+
     AdapterStatusMessage adapter_status = 12;
+    bool system_sleep_changed = 13;
   }
 }
