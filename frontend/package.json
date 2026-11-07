@@ -1,0 +1,36 @@
+{
+  "name": "timetracker-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run dev:mock",
+    "dev:mock": "concurrently --kill-others --names api,web --prefix-colors cyan,magenta \"npm:mock\" \"vite --mode mock\"",
+    "dev:real": "vite --mode real",
+    "mock": "tsx mock-server/server.ts",
+    "build": "tsc -b && vite build",
+    "test": "tsx --test tests/analytics.test.ts",
+    "typecheck": "tsc -b --pretty false",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.2",
+    "lucide-react": "^0.545.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.9.3",
+    "recharts": "^3.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.7.2",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^9.2.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.20.6",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.9"
+  }
+}
