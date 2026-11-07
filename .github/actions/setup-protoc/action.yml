@@ -1,0 +1,27 @@
+name: Install Protobuf Compiler
+description: Install protoc 34.0 to match the client's protobuf-codegen version.
+runs:
+  using: composite
+  steps:
+    - name: Download and verify protoc
+      shell: bash
+      env:
+        PROTOC_VERSION: '34.0'
+      run: |
+        set -euo pipefail
+        protoc_dir="${RUNNER_TEMP}/protoc-${PROTOC_VERSION}"
+        archive="${RUNNER_TEMP}/protoc-${PROTOC_VERSION}.zip"
+        curl --fail --location --retry 3 \
+          "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip" \
+          --output "${archive}"
+        echo "e9a91b6fcfe4177ec2cd35fc8f15c1e811fa0ecdef9372755cd6d3513d5faaab  ${archive}" | sha256sum --check
+        unzip -q -o "${archive}" -d "${protoc_dir}"
+        chmod +x "${protoc_dir}/bin/protoc"
+        test "$("${protoc_dir}/bin/protoc" --version)" = "libprotoc ${PROTOC_VERSION}"
+        echo "${protoc_dir}/bin" >> "${GITHUB_PATH}"
+    - name: Verify active protoc version
+      shell: bash
+      run: |
+        set -euo pipefail
+        protoc --version
+        test "$(protoc --version)" = "libprotoc 34.0"
