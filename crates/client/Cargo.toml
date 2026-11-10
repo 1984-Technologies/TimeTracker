@@ -8,7 +8,7 @@ async-trait.workspace = true
 time.workspace = true
 timetracker-model = { path = "../model" }
 timetracker-proto = { path = "../proto" }
-tokio.workspace = true
+tokio = { workspace = true, features = ["signal"] }
 tonic.workspace = true
 uuid.workspace = true
 

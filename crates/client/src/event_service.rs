@@ -71,24 +71,81 @@ impl ClientEventService {
         Ok(())
     }
 
-    pub async fn enqueue_kind(&self, _kind: EventKind) -> Result<(), ClientError> {
+    pub async fn enqueue_kind(&self, kind: EventKind) -> Result<(), ClientError> {
         self.queue
             .push(Event {
                 id: EventId(Uuid::new_v4()),
                 device_id: self.device_id,
                 occurred_at: OffsetDateTime::now_utc(),
-                kind: _kind,
+                kind,
             })
             .await
     }
 
-    pub async fn upload_loop(&self, _shutdown: watch::Receiver<bool>) -> Result<(), ClientError> {
-        while !*_shutdown.borrow() {
-            self.queue.wait_for_events().await?;
+    pub async fn upload_loop(
+        &self,
+        mut shutdown: watch::Receiver<bool>,
+    ) -> Result<(), ClientError> {
+        loop {
+            if *shutdown.borrow() {
+                break;
+            }
+
+            tokio::select! {
+                biased;
+                changed = shutdown.changed() => {
+                    match changed {
+                        Ok(()) if *shutdown.borrow() => break,
+                        Ok(()) => continue,
+                        Err(_) => break,
+                    }
+                }
+                result = self.queue.wait_for_events() => result?,
+            }
+
             let events = self.queue.pending(Self::LIMIT).await?;
-            let event_ids = self.upload_client.send(self.device_id, &events).await?;
+            let event_ids = tokio::select! {
+                biased;
+                changed = shutdown.changed() => {
+                    match changed {
+                        Ok(()) if *shutdown.borrow() => break,
+                        Ok(()) => continue,
+                        Err(_) => break,
+                    }
+                }
+                result = self.upload_client.send(self.device_id, &events) => result?,
+            };
             self.queue.acknowledge(&event_ids).await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, time::Duration};
+
+    use tokio::sync::watch;
+    use uuid::Uuid;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn upload_loop_stops_while_waiting_for_an_empty_queue() {
+        let service = ClientEventService::new(
+            DeviceId(Uuid::new_v4()),
+            Arc::new(EventQueue::new()),
+            GrpcUploadClient::new("http://127.0.0.1:50051".to_owned()).unwrap(),
+        );
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+        let task = tokio::spawn(async move { service.upload_loop(shutdown_rx).await });
+        shutdown_tx.send_replace(true);
+
+        let result = tokio::time::timeout(Duration::from_millis(100), task)
+            .await
+            .expect("upload loop did not observe shutdown")
+            .unwrap();
+        assert!(result.is_ok());
     }
 }
