@@ -19,9 +19,7 @@ use crate::{
     api::ApiServer,
     collection::{CollectionError, MetricsCollectionService},
 };
-pub mod proto {
-    tonic::include_proto!("timetracker.metrics");
-}
+pub use timetracker_proto::metrics as proto;
 
 use proto::{
     AdapterStatusMessage, EventMessage, ObservationTypeProto, UploadEventsRequest,
