@@ -72,7 +72,7 @@ async fn main() -> Result<(), BackendError> {
     let http_bind_addr = read_socket_addr("HTTP_BIND_ADDR")?;
     info!("Connecting to PostgreSQL database...");
 
-    let _db_pool = PgPoolOptions::new()
+    let db_pool = PgPoolOptions::new()
         .max_connections(10)
         .connect(&database_url)
         .await
@@ -82,24 +82,14 @@ async fn main() -> Result<(), BackendError> {
         })?;
     info!("Successfully connected to PostgreSQL");
 
-    // TODO(backend-postgres): Replace stub initialization with real repository constructors
-    // once implemented in `backend-postgres` (passing `_db_pool.clone()`).
-    // Currently wrapped in unreachable code so the binary compiles while DB repositories are under development.
-    #[allow(unreachable_code)]
-    let (device_repository, event_repository, user_repository, user_action_repository) = {
-        let device_repo: PostgresDeviceRepository = todo!("Wait for backend-postgres constructors");
-        let event_repo: PostgresEventRepository = todo!("Wait for backend-postgres constructors");
-        let user_repo: PostgresUserRepository = todo!("Wait for backend-postgres constructors");
-        let action_repo: PostgresUserActionRepository =
-            todo!("Wait for backend-postgres constructors");
-
-        let device_repo: Arc<dyn DeviceRepository> = Arc::new(device_repo);
-        let event_repo: Arc<dyn EventRepository> = Arc::new(event_repo);
-        let user_repo: Arc<dyn UserRepository> = Arc::new(user_repo);
-        let action_repo: Arc<dyn UserActionRepository> = Arc::new(action_repo);
-
-        (device_repo, event_repo, user_repo, action_repo)
-    };
+    let device_repository: Arc<dyn DeviceRepository> =
+        Arc::new(PostgresDeviceRepository::new(db_pool.clone()));
+    let event_repository: Arc<dyn EventRepository> =
+        Arc::new(PostgresEventRepository::new(db_pool.clone()));
+    let user_repository: Arc<dyn UserRepository> =
+        Arc::new(PostgresUserRepository::new(db_pool.clone()));
+    let user_action_repository: Arc<dyn UserActionRepository> =
+        Arc::new(PostgresUserActionRepository::new(db_pool));
 
     let collection_service = Arc::new(MetricsCollectionService::new(
         device_repository,

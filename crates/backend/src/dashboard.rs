@@ -54,14 +54,14 @@ impl DashboardService {
     }
 
     pub async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> {
-        todo!()
+        self.users.list_users().await
     }
 
     pub async fn user_actions(
         &self,
-        _user_id: UserId,
-        _range: TimeRange,
+        user_id: UserId,
+        range: TimeRange,
     ) -> Result<Vec<UserAction>, BackendError> {
-        todo!()
+        self.actions.user_actions(user_id, range).await
     }
 }
