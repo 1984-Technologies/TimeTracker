@@ -19,6 +19,7 @@ impl InstallationIdentity {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path.join("device-id"))?;
         let mut id = String::new();
         file.read_to_string(&mut id)?;

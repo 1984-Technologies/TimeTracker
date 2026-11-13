@@ -9,12 +9,10 @@ axum.workspace = true
 serde_json.workspace = true
 sqlx = { workspace = true, features = ["postgres"] }
 timetracker-model = { path = "../model" }
+timetracker-proto = { path = "../proto" }
 time.workspace = true
-tonic = "0.12.3"
+tonic.workspace = true
 uuid = { version = "1.26.1", features = ["v4"] }
-prost = "0.13.5"
 tokio = { workspace = true, features = ["signal"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
-[build-dependencies]
-tonic-build = { version = "0.12.3", features = ["prost"] }
