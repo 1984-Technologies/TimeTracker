@@ -22,19 +22,15 @@ pub struct GrpcUploadClient {
 }
 
 impl GrpcUploadClient {
-    pub fn new(address: String) -> Self {
-        let address = address
-            .strip_prefix("dns:///")
-            .map_or(address.clone(), |authority| format!("http://{authority}"));
-        let channel = Endpoint::from_shared(address)
-            .expect("gRPC server address must be a valid URI")
+    pub fn new(address: String) -> Result<Self, ClientError> {
+        let channel = Endpoint::from_shared(address)?
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(REQUEST_TIMEOUT)
             .connect_lazy();
 
-        Self {
+        Ok(Self {
             client: ClientMetricsUploaderClient::new(channel),
-        }
+        })
     }
 
     pub async fn send(
@@ -202,6 +198,7 @@ mod tests {
 
     use super::*;
 
+   
     #[test]
     fn preserves_absent_optional_title() {
         let event = Event {
