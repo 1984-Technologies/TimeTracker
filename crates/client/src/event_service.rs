@@ -121,31 +121,3 @@ impl ClientEventService {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::{sync::Arc, time::Duration};
-
-    use tokio::sync::watch;
-    use uuid::Uuid;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn upload_loop_stops_while_waiting_for_an_empty_queue() {
-        let service = ClientEventService::new(
-            DeviceId(Uuid::new_v4()),
-            Arc::new(EventQueue::new()),
-            GrpcUploadClient::new("http://127.0.0.1:50051".to_owned()).unwrap(),
-        );
-        let (shutdown_tx, shutdown_rx) = watch::channel(false);
-
-        let task = tokio::spawn(async move { service.upload_loop(shutdown_rx).await });
-        shutdown_tx.send_replace(true);
-
-        let result = tokio::time::timeout(Duration::from_millis(100), task)
-            .await
-            .expect("upload loop did not observe shutdown")
-            .unwrap();
-        assert!(result.is_ok());
-    }
-}

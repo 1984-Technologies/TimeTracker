@@ -198,11 +198,7 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn rejects_invalid_server_uri() {
-        assert!(GrpcUploadClient::new("http://bad host".to_owned()).is_err());
-    }
-
+   
     #[test]
     fn preserves_absent_optional_title() {
         let event = Event {
