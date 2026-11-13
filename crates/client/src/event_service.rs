@@ -60,8 +60,8 @@ impl ClientEventService {
                             occurred_at: timestamp,
                             kind: EventKind::AdapterStatus {
                                 adapter_id: adapter_id.to_string(),
-                                observation_type: observation_type,
-                                status: status,
+                                observation_type,
+                                status,
                             },
                         })
                         .await?;
