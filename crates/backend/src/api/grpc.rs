@@ -122,6 +122,32 @@ fn convert_proto_event(
         event_message::Kind::SystemSleepChanged(sleeping) => {
             EventKind::Observation(ObservationKind::SystemSleepChanged { sleeping })
         }
+        event_message::Kind::ActiveBrowserTabChanged(changed) => {
+            require_source_id(&changed.source_id, "ActiveBrowserTabChanged.source_id")?;
+            EventKind::Observation(ObservationKind::ActiveBrowserTabChanged {
+                source_id: changed.source_id,
+                window_id: changed.window_id,
+                tab_id: changed.tab_id,
+                title: changed.title,
+            })
+        }
+        event_message::Kind::ActiveBrowserTabTitleChanged(changed) => {
+            require_source_id(&changed.source_id, "ActiveBrowserTabTitleChanged.source_id")?;
+            EventKind::Observation(ObservationKind::ActiveBrowserTabTitleChanged {
+                source_id: changed.source_id,
+                window_id: changed.window_id,
+                tab_id: changed.tab_id,
+                title: changed.title,
+            })
+        }
+        event_message::Kind::BrowserWindowFocusChanged(changed) => {
+            require_source_id(&changed.source_id, "BrowserWindowFocusChanged.source_id")?;
+            EventKind::Observation(ObservationKind::BrowserWindowFocusChanged {
+                source_id: changed.source_id,
+                window_id: changed.window_id,
+                focused: changed.focused,
+            })
+        }
         event_message::Kind::AdapterStatus(status_msg) => convert_adapter_status(status_msg)?,
     };
 
@@ -131,6 +157,15 @@ fn convert_proto_event(
         occurred_at,
         kind,
     })
+}
+
+fn require_source_id(source_id: &str, field_name: &str) -> Result<(), Status> {
+    if source_id.trim().is_empty() {
+        return Err(Status::invalid_argument(format!(
+            "{field_name} cannot be empty"
+        )));
+    }
+    Ok(())
 }
 
 fn convert_adapter_status(msg: AdapterStatusMessage) -> Result<EventKind, Status> {
@@ -156,6 +191,7 @@ fn convert_adapter_status(msg: AdapterStatusMessage) -> Result<EventKind, Status
         ObservationTypeProto::Keyboard => ObservationType::Keyboard,
         ObservationTypeProto::MouseClick => ObservationType::MouseClick,
         ObservationTypeProto::MouseMove => ObservationType::MouseMove,
+        ObservationTypeProto::BrowserActivity => ObservationType::BrowserActivity,
     };
 
     let status = match msg.status {
