@@ -33,3 +33,8 @@ pub mod macos;
 
 #[cfg(target_os = "macos")]
 pub use macos::{MacOsAdapterRuntime, MacOsRuntimeShutdownHandle, default_adapters};
+
+#[cfg(not(target_os = "macos"))]
+pub fn default_adapters() -> Result<Vec<Box<dyn DesktopAdapter>>, crate::ClientError> {
+    Ok(Vec::new())
+}

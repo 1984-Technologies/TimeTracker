@@ -2,7 +2,8 @@ use std::{io, time::Duration};
 
 use timetracker_model::{AdapterStatus, DeviceId, Event, EventId, EventKind, ObservationKind};
 use timetracker_proto::metrics::{
-    AdapterStatusMessage, EventMessage, FocusedApplicationChangedMessage,
+    ActiveBrowserTabChangedMessage, ActiveBrowserTabTitleChangedMessage, AdapterStatusMessage,
+    BrowserWindowFocusChangedMessage, EventMessage, FocusedApplicationChangedMessage,
     KeyboardButtonPressedMessage, MouseClickedMessage, MouseMovedMessage, ObservationTypeProto,
     UploadEventsRequest, adapter_status_message,
     client_metrics_uploader_client::ClientMetricsUploaderClient, event_message,
@@ -105,6 +106,9 @@ fn event_to_proto(event: &Event) -> Result<EventMessage, ClientError> {
                 timetracker_model::ObservationType::Keyboard => ObservationTypeProto::Keyboard,
                 timetracker_model::ObservationType::MouseClick => ObservationTypeProto::MouseClick,
                 timetracker_model::ObservationType::MouseMove => ObservationTypeProto::MouseMove,
+                timetracker_model::ObservationType::BrowserActivity => {
+                    ObservationTypeProto::BrowserActivity
+                }
             };
             let status = match status {
                 AdapterStatus::Available => adapter_status_message::Status::Available(true),
@@ -156,6 +160,39 @@ fn observation_to_proto(observation: &ObservationKind) -> event_message::Kind {
         ObservationKind::SystemSleepChanged { sleeping } => {
             event_message::Kind::SystemSleepChanged(*sleeping)
         }
+        ObservationKind::ActiveBrowserTabChanged {
+            source_id,
+            window_id,
+            tab_id,
+            title,
+        } => event_message::Kind::ActiveBrowserTabChanged(ActiveBrowserTabChangedMessage {
+            source_id: source_id.clone(),
+            window_id: *window_id,
+            tab_id: *tab_id,
+            title: title.clone(),
+        }),
+        ObservationKind::ActiveBrowserTabTitleChanged {
+            source_id,
+            window_id,
+            tab_id,
+            title,
+        } => {
+            event_message::Kind::ActiveBrowserTabTitleChanged(ActiveBrowserTabTitleChangedMessage {
+                source_id: source_id.clone(),
+                window_id: *window_id,
+                tab_id: *tab_id,
+                title: title.clone(),
+            })
+        }
+        ObservationKind::BrowserWindowFocusChanged {
+            source_id,
+            window_id,
+            focused,
+        } => event_message::Kind::BrowserWindowFocusChanged(BrowserWindowFocusChangedMessage {
+            source_id: source_id.clone(),
+            window_id: *window_id,
+            focused: *focused,
+        }),
     }
 }
 

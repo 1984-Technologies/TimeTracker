@@ -18,6 +18,7 @@ pub enum ObservationType {
     Keyboard,
     MouseClick,
     MouseMove,
+    BrowserActivity,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -49,6 +50,23 @@ pub enum ObservationKind {
     },
     SystemSleepChanged {
         sleeping: bool,
+    },
+    ActiveBrowserTabChanged {
+        source_id: String,
+        window_id: i64,
+        tab_id: i64,
+        title: Option<String>,
+    },
+    ActiveBrowserTabTitleChanged {
+        source_id: String,
+        window_id: i64,
+        tab_id: i64,
+        title: Option<String>,
+    },
+    BrowserWindowFocusChanged {
+        source_id: String,
+        window_id: Option<i64>,
+        focused: bool,
     },
 }
 
