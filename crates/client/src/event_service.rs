@@ -86,38 +86,39 @@ impl ClientEventService {
         &self,
         mut shutdown: watch::Receiver<bool>,
     ) -> Result<(), ClientError> {
-        loop {
-            if *shutdown.borrow() {
-                break;
-            }
+        let mut shutting_down = false;
 
-            tokio::select! {
-                biased;
-                changed = shutdown.changed() => {
-                    match changed {
-                        Ok(()) if *shutdown.borrow() => break,
-                        Ok(()) => continue,
-                        Err(_) => break,
+        loop {
+            if !shutting_down {
+                if *shutdown.borrow() {
+                    shutting_down = true;
+                } else {
+                    tokio::select! {
+                        biased;
+                        changed = shutdown.changed() => {
+                            shutting_down = match changed {
+                                Ok(()) => *shutdown.borrow(),
+                                Err(_) => true,
+                            };
+                        }
+                        result = self.queue.wait_for_events() => result?,
                     }
                 }
-                result = self.queue.wait_for_events() => result?,
             }
 
             let events = self.queue.pending(Self::LIMIT).await?;
-            let event_ids = tokio::select! {
-                biased;
-                changed = shutdown.changed() => {
-                    match changed {
-                        Ok(()) if *shutdown.borrow() => break,
-                        Ok(()) => continue,
-                        Err(_) => break,
-                    }
+            if events.is_empty() {
+                if shutting_down {
+                    break;
                 }
-                result = self.upload_client.send(self.device_id, &events) => result?,
-            };
+                continue;
+            }
+
+            // Once a request starts, let its timeout determine when it ends. Dropping the
+            // request on shutdown can lose this in-memory batch before the server accepts it.
+            let event_ids = self.upload_client.send(self.device_id, &events).await?;
             self.queue.acknowledge(&event_ids).await?;
         }
         Ok(())
     }
 }
-

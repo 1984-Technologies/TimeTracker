@@ -68,6 +68,20 @@ fn remember_first_error(first_error: &mut Option<ClientError>, result: Result<()
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
+async fn run_with_completion_hook<Operation, OnComplete>(
+    operation: Operation,
+    on_complete: OnComplete,
+) -> Result<(), ClientError>
+where
+    Operation: Future<Output = Result<(), ClientError>>,
+    OnComplete: FnOnce(),
+{
+    let result = operation.await;
+    on_complete();
+    result
+}
+
 async fn run_client<Shutdown, OnStopping>(
     adapters: Vec<Box<dyn DesktopAdapter>>,
     shutdown_signal: Shutdown,
@@ -161,9 +175,10 @@ async fn main() -> Result<(), ClientError> {
 
     let (runtime, adapters) = default_adapters()?;
     let runtime_shutdown = runtime.shutdown_handle();
+    let completion_runtime_shutdown = runtime_shutdown.clone();
     let (runtime_stopped_tx, mut runtime_stopped_rx) = oneshot::channel();
 
-    let client_task = tokio::spawn(run_client(
+    let client = run_client(
         adapters,
         async move {
             tokio::select! {
@@ -174,7 +189,10 @@ async fn main() -> Result<(), ClientError> {
         move || {
             let _ = runtime_shutdown.request_shutdown();
         },
-    ));
+    );
+    let client_task = tokio::spawn(run_with_completion_hook(client, move || {
+        let _ = completion_runtime_shutdown.request_shutdown();
+    }));
 
     // NSWorkspace requires its event loop to remain on the macOS main thread.
     runtime.run();

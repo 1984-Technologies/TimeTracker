@@ -3,9 +3,9 @@ use timetracker_model::DeviceId;
 use crate::ClientError;
 use std::{
     env,
-    fs::OpenOptions,
-    io::{self, Read, Write},
-    path::PathBuf,
+    fs::{self, OpenOptions},
+    io::{self, Write},
+    path::{Path, PathBuf},
 };
 use uuid::Uuid;
 
@@ -13,26 +13,48 @@ pub struct InstallationIdentity;
 
 impl InstallationIdentity {
     pub fn load_or_create(&self) -> Result<DeviceId, ClientError> {
-        let path = state_directory()?;
-        std::fs::create_dir_all(&path)?;
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(path.join("device-id"))?;
-        let mut id = String::new();
-        file.read_to_string(&mut id)?;
-        match id.trim() {
-            "" => {
-                let id = Uuid::new_v4();
-                file.write_all(id.to_string().as_bytes())?;
-                file.sync_all()?;
-                Ok(DeviceId(id))
-            }
-            id => Ok(DeviceId(Uuid::parse_str(id)?)),
-        }
+        let state_directory = state_directory()?;
+        load_or_create_at(&state_directory)
     }
+}
+
+fn load_or_create_at(
+    state_directory: &Path,
+) -> Result<DeviceId, ClientError> {
+    fs::create_dir_all(state_directory)?;
+    let device_id_path = state_directory.join("device-id");
+
+    if let Some(device_id) = read_device_id(&device_id_path)? {
+        return Ok(device_id);
+    }
+
+    let device_id = DeviceId(Uuid::new_v4());
+    write_device_id(&device_id_path, device_id)?;
+    Ok(device_id)
+}
+
+fn read_device_id(path: &Path) -> Result<Option<DeviceId>, ClientError> {
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let contents = contents.trim();
+    if contents.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(DeviceId(Uuid::parse_str(contents)?)))
+}
+
+fn write_device_id(path: &Path, device_id: DeviceId) -> Result<(), ClientError> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)?;
+    file.write_all(device_id.0.to_string().as_bytes())?;
+    file.sync_all()?;
+    Ok(())
 }
 
 fn state_directory() -> Result<PathBuf, ClientError> {
