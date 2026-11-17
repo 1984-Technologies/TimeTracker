@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use timetracker_model::{AdapterStatus, DeviceId, EventId, ObservationType, UserId};
 
@@ -13,11 +14,13 @@ pub struct TimeRange {
     pub end: OffsetDateTime,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UserSummary {
     pub id: UserId,
     pub name: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum UserActionKind {
     CollectorStarted,
     CollectorStopped,
@@ -36,9 +39,11 @@ pub enum UserActionKind {
     },
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UserAction {
     pub id: EventId,
     pub device_id: DeviceId,
+    #[serde(with = "time::serde::rfc3339")]
     pub occurred_at: OffsetDateTime,
     pub kind: UserActionKind,
 }

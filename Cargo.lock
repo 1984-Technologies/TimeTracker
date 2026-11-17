@@ -3456,6 +3456,7 @@ dependencies = [
  "async-trait",
  "axum 0.8.9",
  "prost",
+ "serde",
  "serde_json",
  "sqlx",
  "time",
