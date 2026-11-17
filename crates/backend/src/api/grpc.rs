@@ -15,9 +15,7 @@ use tonic::{Request, Response, Status, transport::Server};
 use uuid::Uuid;
 
 use crate::{BackendError, api::ApiServer, collection::MetricsCollectionService};
-pub mod proto {
-    tonic::include_proto!("timetracker.metrics");
-}
+pub use timetracker_proto::metrics as proto;
 
 use proto::{
     AdapterStatusMessage, EventMessage, ObservationTypeProto, UploadEventsRequest,
@@ -89,14 +87,62 @@ fn convert_proto_event(
                 title: app.title,
             })
         }
-        event_message::Kind::KeyboardButtonPressed(_) => {
-            EventKind::Observation(ObservationKind::KeyboardButtonPressed {})
+        event_message::Kind::KeyboardButtonPressed(keyboard) => {
+            if keyboard.key.trim().is_empty() {
+                return Err(Status::invalid_argument(
+                    "KeyboardButtonPressed.key cannot be empty",
+                ));
+            }
+
+            EventKind::Observation(ObservationKind::KeyboardButtonPressed { key: keyboard.key })
         }
-        event_message::Kind::MouseClicked(_) => {
-            EventKind::Observation(ObservationKind::MouseClicked {})
+        event_message::Kind::MouseClicked(mouse) => {
+            if mouse.button.trim().is_empty() {
+                return Err(Status::invalid_argument(
+                    "MouseClicked.button cannot be empty",
+                ));
+            }
+
+            EventKind::Observation(ObservationKind::MouseClicked {
+                button: mouse.button,
+                x: mouse.x,
+                y: mouse.y,
+            })
         }
-        event_message::Kind::MouseMoved(_) => {
-            EventKind::Observation(ObservationKind::MouseMoved {})
+        event_message::Kind::MouseMoved(mouse) => {
+            EventKind::Observation(ObservationKind::MouseMoved {
+                x: mouse.x,
+                y: mouse.y,
+            })
+        }
+        event_message::Kind::SystemSleepChanged(sleeping) => {
+            EventKind::Observation(ObservationKind::SystemSleepChanged { sleeping })
+        }
+        event_message::Kind::ActiveBrowserTabChanged(changed) => {
+            require_source_id(&changed.source_id, "ActiveBrowserTabChanged.source_id")?;
+            EventKind::Observation(ObservationKind::ActiveBrowserTabChanged {
+                source_id: changed.source_id,
+                window_id: changed.window_id,
+                tab_id: changed.tab_id,
+                title: changed.title,
+            })
+        }
+        event_message::Kind::ActiveBrowserTabTitleChanged(changed) => {
+            require_source_id(&changed.source_id, "ActiveBrowserTabTitleChanged.source_id")?;
+            EventKind::Observation(ObservationKind::ActiveBrowserTabTitleChanged {
+                source_id: changed.source_id,
+                window_id: changed.window_id,
+                tab_id: changed.tab_id,
+                title: changed.title,
+            })
+        }
+        event_message::Kind::BrowserWindowFocusChanged(changed) => {
+            require_source_id(&changed.source_id, "BrowserWindowFocusChanged.source_id")?;
+            EventKind::Observation(ObservationKind::BrowserWindowFocusChanged {
+                source_id: changed.source_id,
+                window_id: changed.window_id,
+                focused: changed.focused,
+            })
         }
         event_message::Kind::AdapterStatus(status_msg) => convert_adapter_status(status_msg)?,
     };
@@ -107,6 +153,15 @@ fn convert_proto_event(
         occurred_at,
         kind,
     })
+}
+
+fn require_source_id(source_id: &str, field_name: &str) -> Result<(), Status> {
+    if source_id.trim().is_empty() {
+        return Err(Status::invalid_argument(format!(
+            "{field_name} cannot be empty"
+        )));
+    }
+    Ok(())
 }
 
 fn convert_adapter_status(msg: AdapterStatusMessage) -> Result<EventKind, Status> {
@@ -132,6 +187,7 @@ fn convert_adapter_status(msg: AdapterStatusMessage) -> Result<EventKind, Status
         ObservationTypeProto::Keyboard => ObservationType::Keyboard,
         ObservationTypeProto::MouseClick => ObservationType::MouseClick,
         ObservationTypeProto::MouseMove => ObservationType::MouseMove,
+        ObservationTypeProto::BrowserActivity => ObservationType::BrowserActivity,
     };
 
     let status = match msg.status {

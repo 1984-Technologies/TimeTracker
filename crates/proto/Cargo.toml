@@ -1,0 +1,11 @@
+[package]
+name = "timetracker-proto"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+prost = "0.13.5"
+tonic.workspace = true
+
+[build-dependencies]
+tonic-build = { version = "0.12.3", features = ["prost"] }

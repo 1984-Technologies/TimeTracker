@@ -18,6 +18,7 @@ pub enum ObservationType {
     Keyboard,
     MouseClick,
     MouseMove,
+    BrowserActivity,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -35,9 +36,38 @@ pub enum ObservationKind {
         app_id: String,
         title: Option<String>,
     },
-    KeyboardButtonPressed {/* TODO */},
-    MouseClicked {/* TODO */},
-    MouseMoved {/* TODO */},
+    KeyboardButtonPressed {
+        key: String,
+    },
+    MouseClicked {
+        button: String,
+        x: Option<i32>,
+        y: Option<i32>,
+    },
+    MouseMoved {
+        x: i32,
+        y: i32,
+    },
+    SystemSleepChanged {
+        sleeping: bool,
+    },
+    ActiveBrowserTabChanged {
+        source_id: String,
+        window_id: i64,
+        tab_id: i64,
+        title: Option<String>,
+    },
+    ActiveBrowserTabTitleChanged {
+        source_id: String,
+        window_id: i64,
+        tab_id: i64,
+        title: Option<String>,
+    },
+    BrowserWindowFocusChanged {
+        source_id: String,
+        window_id: Option<i64>,
+        focused: bool,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
