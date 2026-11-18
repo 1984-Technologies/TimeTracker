@@ -34,7 +34,7 @@ async fn main() {
     let mut shutdown_receiver1 = shutdown_receiver.clone();
     let supervisor_handle = tokio::spawn(async move {
         let collection_supervisor = CollectionSupervisor::start(adapters, send).await;
-        let _ = shutdown_receiver1.wait_for(|val| *val == true).await;
+        let _ = shutdown_receiver1.wait_for(|val| *val).await;
         let _ = collection_supervisor.stop().await;
     });
 
