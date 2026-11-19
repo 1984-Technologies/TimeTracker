@@ -39,7 +39,7 @@ pub use macos::{MacOsAdapterRuntime, MacOsRuntimeShutdownHandle, default_adapter
 
 #[cfg(target_os = "linux")]
 pub fn default_adapters() -> Result<Vec<Box<dyn DesktopAdapter>>, crate::ClientError> {
-    return Ok(hyprland::default_hyprland_adapters());
+    Ok(hyprland::default_hyprland_adapters())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
