@@ -4,6 +4,9 @@ use tokio::sync::{mpsc, watch};
 
 use crate::ClientError;
 
+#[cfg(target_os = "linux")]
+pub mod hyprland;
+
 pub enum AdapterOutput {
     Observation(Observation),
     Status {
@@ -34,7 +37,12 @@ pub mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::{MacOsAdapterRuntime, MacOsRuntimeShutdownHandle, default_adapters};
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+pub fn default_adapters() -> Result<Vec<Box<dyn DesktopAdapter>>, crate::ClientError> {
+    return Ok(hyprland::default_hyprland_adapters());
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn default_adapters() -> Result<Vec<Box<dyn DesktopAdapter>>, crate::ClientError> {
     Ok(Vec::new())
 }
