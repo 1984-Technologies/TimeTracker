@@ -198,7 +198,6 @@ mod tests {
 
     use super::*;
 
-   
     #[test]
     fn preserves_absent_optional_title() {
         let event = Event {

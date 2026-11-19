@@ -18,9 +18,7 @@ impl InstallationIdentity {
     }
 }
 
-fn load_or_create_at(
-    state_directory: &Path,
-) -> Result<DeviceId, ClientError> {
+fn load_or_create_at(state_directory: &Path) -> Result<DeviceId, ClientError> {
     fs::create_dir_all(state_directory)?;
     let device_id_path = state_directory.join("device-id");
 

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use time::OffsetDateTime;
 use timetracker_model::{DeviceId, Event, EventId, EventKind};
@@ -16,6 +16,7 @@ pub struct ClientEventService {
 impl ClientEventService {
     // max number of events processed in 1 iteration of the upload loop
     const LIMIT: usize = 100;
+    const RETRY_DELAY: Duration = Duration::from_secs(1);
 
     pub fn new(
         device_id: DeviceId,
@@ -116,8 +117,21 @@ impl ClientEventService {
 
             // Once a request starts, let its timeout determine when it ends. Dropping the
             // request on shutdown can lose this in-memory batch before the server accepts it.
-            let event_ids = self.upload_client.send(self.device_id, &events).await?;
-            self.queue.acknowledge(&event_ids).await?;
+            match self.upload_client.send(self.device_id, &events).await {
+                Ok(event_ids) => self.queue.acknowledge(&event_ids).await?,
+                Err(error) => {
+                    eprintln!("Failed to upload events: {error}");
+                    // Keep unacknowledged events for a later attempt, but do not retry
+                    // forever when the client is already stopping.
+                    if shutting_down || *shutdown.borrow() || shutdown.has_changed().is_err() {
+                        return Err(error);
+                    }
+                    tokio::select! {
+                        _ = tokio::time::sleep(Self::RETRY_DELAY) => {}
+                        _ = shutdown.wait_for(|stopping| *stopping) => return Err(error),
+                    }
+                }
+            }
         }
         Ok(())
     }

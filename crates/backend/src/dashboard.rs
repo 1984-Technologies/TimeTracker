@@ -50,7 +50,10 @@ pub struct DashboardService {
 
 impl DashboardService {
     pub fn new(users: Arc<dyn UserRepository>, actions: Arc<dyn UserActionRepository>) -> Self {
-        Self { _users: users, _actions: actions }
+        Self {
+            _users: users,
+            _actions: actions,
+        }
     }
 
     pub async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> {

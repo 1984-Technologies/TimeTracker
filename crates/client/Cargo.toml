@@ -12,6 +12,9 @@ tokio = { workspace = true, features = ["signal"] }
 tonic.workspace = true
 uuid.workspace = true
 
+[dev-dependencies]
+tokio-stream = { version = "0.1", features = ["net"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 active-win-pos-rs = "0.11"
 nsworkspace = "0.2"

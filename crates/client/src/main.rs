@@ -217,6 +217,19 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn completion_hook_runs_even_when_client_initialization_fails() {
+        let completed = AtomicBool::new(false);
+        let result = run_with_completion_hook(
+            async { Err(io::Error::other("initialization failed").into()) },
+            || completed.store(true, Ordering::SeqCst),
+        )
+        .await;
+
+        assert_eq!(result.unwrap_err().to_string(), "initialization failed");
+        assert!(completed.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
     async fn client_tasks_stop_in_order_after_shutdown_is_requested() {
         let event_service = Arc::new(ClientEventService::new(
             DeviceId(Uuid::new_v4()),
