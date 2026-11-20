@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use time::OffsetDateTime;
 use timetracker_model::{DeviceId, Event, EventId, UserId};
 
 use crate::{
@@ -50,6 +51,14 @@ impl UserActionRepository for PostgresUserActionRepository {
         &self,
         _user_id: UserId,
         _range: TimeRange,
+    ) -> Result<Vec<UserAction>, BackendError> {
+        todo!()
+    }
+
+    async fn preceding_actions(
+        &self,
+        _user_id: UserId,
+        _before: OffsetDateTime,
     ) -> Result<Vec<UserAction>, BackendError> {
         todo!()
     }
