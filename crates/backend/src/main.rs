@@ -17,13 +17,16 @@ use timetracker_backend::{
 };
 
 fn read_env_var(name: &str) -> Result<String, BackendError> {
-    env::var(name).map_err(|e| format!("Failed to read environment variable {name}: {e}").into())
+    env::var(name).map_err(|e| {
+        BackendError::Validation(format!("Failed to read environment variable {name}: {e}"))
+    })
 }
 
 fn read_socket_addr(name: &str) -> Result<SocketAddr, BackendError> {
     let var = read_env_var(name)?;
-    var.parse::<SocketAddr>()
-        .map_err(|e| format!("Invalid socket address in {name} ('{var}'): {e}").into())
+    var.parse::<SocketAddr>().map_err(|e| {
+        BackendError::Validation(format!("Invalid socket address in {name} ('{var}'): {e}"))
+    })
 }
 
 async fn wait_for_shutdown_signal(shutdown_tx: watch::Sender<bool>) {
@@ -78,7 +81,7 @@ async fn main() -> Result<(), BackendError> {
         .await
         .map_err(|e| {
             error!("Failed to connect to PostgreSQL: {e}");
-            format!("Failed to connect to PostgreSQL: {e}")
+            BackendError::Internal(format!("Failed to connect to PostgreSQL: {e}"))
         })?;
     info!("Successfully connected to PostgreSQL");
 
