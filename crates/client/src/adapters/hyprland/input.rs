@@ -3,6 +3,7 @@ use std::{
     fs::OpenOptions,
     os::{fd::OwnedFd, unix::fs::OpenOptionsExt},
     path::Path,
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -18,7 +19,10 @@ use input::{
 use timetracker_model::{AdapterStatus, ObservationKind, ObservationType};
 use tokio::sync::{mpsc, watch};
 
-use super::{observation, readable, run_native, running, send_native, status, unavailable};
+use super::{
+    focused_application::{request, socket_directory},
+    observation, readable, run_native, running, send, send_native, status, stopped, unavailable,
+};
 use crate::{
     ClientError,
     adapters::{AdapterOutput, DesktopAdapter},
@@ -59,6 +63,9 @@ fn connect(kind: ObservationType) -> Result<(Libinput, usize), ClientError> {
     if devices == 0 {
         return Err(format!("No readable {kind:?} devices on {seat}; raw input requires read access to /dev/input/event*. Hyprland IPC does not expose global key or button events.").into());
     }
+    if kind == ObservationType::MouseClick {
+        tokio::runtime::Handle::current().block_on(cursor_position(&socket_directory()?))?;
+    }
     Ok((context, devices))
 }
 
@@ -69,7 +76,7 @@ fn capability(kind: ObservationType) -> DeviceCapability {
     }
 }
 
-fn activity(event: Event, position: &mut (i32, i32)) -> Option<ObservationKind> {
+fn activity(event: Event) -> Option<ObservationKind> {
     match event {
         Event::Keyboard(KeyboardEvent::Key(event)) if event.key_state() == KeyState::Pressed => {
             Some(ObservationKind::KeyboardButtonPressed {
@@ -81,24 +88,8 @@ fn activity(event: Event, position: &mut (i32, i32)) -> Option<ObservationKind> 
         {
             Some(ObservationKind::MouseClicked {
                 button: event.button().to_string(),
-                x: Some(position.0),
-                y: Some(position.1),
-            })
-        }
-        Event::Pointer(PointerEvent::Motion(event)) => {
-            position.0 = position.0.saturating_add(event.dx().round() as i32);
-            position.1 = position.1.saturating_add(event.dy().round() as i32);
-            Some(ObservationKind::MouseMoved {
-                x: position.0,
-                y: position.1,
-            })
-        }
-        Event::Pointer(PointerEvent::MotionAbsolute(event)) => {
-            position.0 = event.absolute_x().round() as i32;
-            position.1 = event.absolute_y().round() as i32;
-            Some(ObservationKind::MouseMoved {
-                x: position.0,
-                y: position.1,
+                x: None,
+                y: None,
             })
         }
         _ => None,
@@ -146,7 +137,6 @@ macro_rules! input_adapter {
                     if !send_native(&output, &mut shutdown, status(&$name, AdapterStatus::Available)) {
                         return Ok(());
                     }
-                    let mut position = (0, 0);
                     while running(&output, &shutdown) {
                         if !readable(&context)? { continue; }
                         context.dispatch()?;
@@ -158,10 +148,16 @@ macro_rules! input_adapter {
                                     _ => {},
                                 }
                             }
-                            if let Some(activity) = activity(event, &mut position)
-                                && matches_kind(&activity, kind)
-                                && !send_native(&output, &mut shutdown, observation(activity)) {
-                                return Ok(());
+                            if let Some(mut activity) = activity(event)
+                                && matches_kind(&activity, kind) {
+                                if let ObservationKind::MouseClicked { x, y, .. } = &mut activity {
+                                    let position = tokio::runtime::Handle::current().block_on(cursor_position(&socket_directory()?))?;
+                                    *x = Some(position.x);
+                                    *y = Some(position.y);
+                                }
+                                if !send_native(&output, &mut shutdown, observation(activity)) {
+                                    return Ok(());
+                                }
                             }
                         }
                         if devices == 0 {
@@ -177,39 +173,175 @@ macro_rules! input_adapter {
 
 input_adapter!(KeyboardAdapter, "hyprland.keyboard", Keyboard);
 input_adapter!(MouseClickAdapter, "hyprland.mouse-click", MouseClick);
-input_adapter!(MouseMoveAdapter, "hyprland.mouse-move", MouseMove);
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize)]
+struct CursorPosition {
+    x: i32,
+    y: i32,
+}
+
+async fn cursor_position(directory: &Path) -> Result<CursorPosition, ClientError> {
+    Ok(serde_json::from_slice(
+        &request(directory, b"j/cursorpos").await?,
+    )?)
+}
+
+#[derive(Default)]
+pub struct MouseMoveAdapter;
+
+impl MouseMoveAdapter {
+    async fn collect(
+        &self,
+        directory: &Path,
+        output: &mpsc::Sender<AdapterOutput>,
+        shutdown: &mut watch::Receiver<bool>,
+    ) -> Result<(), ClientError> {
+        let mut previous = None;
+        // Device deltas cannot account for cursor clipping, scaling, or compositor warps.
+        let mut ticker = tokio::time::interval(Duration::from_secs_f64(1.0 / 60.0));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            let position = tokio::select! {
+                biased;
+                _ = stopped(shutdown) => return Ok(()),
+                _ = output.closed() => return Ok(()),
+                result = async {
+                    ticker.tick().await;
+                    cursor_position(directory).await
+                } => result?,
+            };
+            if previous.is_none()
+                && !send(output, shutdown, status(self, AdapterStatus::Available)).await
+            {
+                return Ok(());
+            }
+            if previous != Some(position) {
+                if !send(
+                    output,
+                    shutdown,
+                    observation(ObservationKind::MouseMoved {
+                        x: position.x,
+                        y: position.y,
+                    }),
+                )
+                .await
+                {
+                    return Ok(());
+                }
+                previous = Some(position);
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl DesktopAdapter for MouseMoveAdapter {
+    fn id(&self) -> &'static str {
+        "hyprland.mouse-move"
+    }
+
+    fn observation_type(&self) -> ObservationType {
+        ObservationType::MouseMove
+    }
+
+    async fn probe(&self) -> AdapterStatus {
+        let result = async { cursor_position(&socket_directory()?).await }.await;
+        match result {
+            Ok(_) => AdapterStatus::Available,
+            Err(error) => unavailable(error),
+        }
+    }
+
+    async fn run(
+        &mut self,
+        output: mpsc::Sender<AdapterOutput>,
+        mut shutdown: watch::Receiver<bool>,
+    ) -> Result<(), ClientError> {
+        if !running(&output, &shutdown) {
+            return Ok(());
+        }
+        let result = async {
+            self.collect(&socket_directory()?, &output, &mut shutdown)
+                .await
+        }
+        .await;
+        if let Err(error) = result {
+            send(&output, &mut shutdown, status(self, unavailable(error))).await;
+        }
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn each_input_adapter_accepts_only_its_own_activity() {
-        for (activity, expected) in [
-            (
-                ObservationKind::KeyboardButtonPressed { key: "30".into() },
-                ObservationType::Keyboard,
-            ),
-            (
-                ObservationKind::MouseClicked {
-                    button: "272".into(),
-                    x: Some(10),
-                    y: Some(20),
-                },
-                ObservationType::MouseClick,
-            ),
-            (
-                ObservationKind::MouseMoved { x: 10, y: 20 },
-                ObservationType::MouseMove,
-            ),
-        ] {
-            for kind in [
-                ObservationType::Keyboard,
-                ObservationType::MouseClick,
-                ObservationType::MouseMove,
+    #[tokio::test]
+    async fn cursor_starts_at_compositor_position_and_stops_changing_at_screen_edge() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::UnixListener,
+        };
+
+        let directory = env::temp_dir().join(format!("tt-cursor-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let listener = UnixListener::bind(directory.join(".socket.sock")).unwrap();
+        let server = tokio::spawn(async move {
+            for (x, y) in [
+                (463, 714),
+                (0, 714),
+                (0, 714),
+                (0, 714),
+                (900, 500),
+                (900, 500),
+                (-100, 400), // A monitor may legitimately be left of the desktop origin.
             ] {
-                assert_eq!(matches_kind(&activity, kind), kind == expected);
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut command = [0; 11];
+                socket.read_exact(&mut command).await.unwrap();
+                assert_eq!(&command, b"j/cursorpos");
+                socket
+                    .write_all(format!(r#"{{"x":{x},"y":{y}}}"#).as_bytes())
+                    .await
+                    .unwrap();
             }
+            std::future::pending::<()>().await;
+        });
+        let (output, mut events) = mpsc::channel(16);
+        let (stop, mut shutdown) = watch::channel(false);
+        let collector_directory = directory.clone();
+        let collector = tokio::spawn(async move {
+            MouseMoveAdapter
+                .collect(&collector_directory, &output, &mut shutdown)
+                .await
+        });
+
+        assert!(matches!(
+            events.recv().await,
+            Some(AdapterOutput::Status {
+                status: AdapterStatus::Available,
+                ..
+            })
+        ));
+        for (x, y) in [(463, 714), (0, 714), (900, 500), (-100, 400)] {
+            let event = tokio::time::timeout(Duration::from_secs(2), events.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            let AdapterOutput::Observation(event) = event else {
+                panic!("expected cursor observation")
+            };
+            assert_eq!(event.kind, ObservationKind::MouseMoved { x, y });
         }
+        stop.send(true).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), collector)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(events.recv().await.is_none());
+        server.abort();
+        let _ = server.await;
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

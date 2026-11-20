@@ -121,7 +121,7 @@ impl DesktopAdapter for FocusedApplicationAdapter {
     }
 }
 
-fn socket_directory() -> Result<PathBuf, ClientError> {
+pub(super) fn socket_directory() -> Result<PathBuf, ClientError> {
     let runtime = env::var_os("XDG_RUNTIME_DIR")
         .filter(|value| !value.is_empty())
         .ok_or("XDG_RUNTIME_DIR is not set; run inside the Hyprland session")?;
@@ -137,12 +137,22 @@ async fn current_window(
     directory: &std::path::Path,
     collect_titles: bool,
 ) -> Result<Window, ClientError> {
+    parse_window(
+        &request(directory, b"j/activewindow").await?,
+        collect_titles,
+    )
+}
+
+pub(super) async fn request(
+    directory: &std::path::Path,
+    command: &[u8],
+) -> Result<Vec<u8>, ClientError> {
     tokio::time::timeout(IPC_TIMEOUT, async {
         let mut socket = UnixStream::connect(directory.join(".socket.sock")).await?;
-        socket.write_all(b"j/activewindow").await?;
+        socket.write_all(command).await?;
         let mut response = Vec::new();
         socket.take(1024 * 1024).read_to_end(&mut response).await?;
-        parse_window(&response, collect_titles)
+        Ok(response)
     })
     .await?
 }
