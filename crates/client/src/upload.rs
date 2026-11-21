@@ -167,10 +167,10 @@ impl GrpcUploadClient {
             })),
         };
         EventMessage {
-            id: id,
+            id,
             device_id: event_device_id,
             occurred_at_unix_nanos: occurred_at,
-            kind: kind,
+            kind,
         }
     }
 }
