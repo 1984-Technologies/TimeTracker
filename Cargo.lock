@@ -3006,7 +3006,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
- "prost",
  "serde",
  "serde_json",
  "sqlx",
@@ -3015,6 +3014,7 @@ dependencies = [
  "timetracker-proto",
  "tokio",
  "tonic",
+ "tonic-build",
  "tower 0.5.3",
  "tower-http",
  "tracing",

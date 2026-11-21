@@ -88,7 +88,9 @@ async fn main() -> Result<(), BackendError> {
     sqlx::raw_sql(include_str!("../schema.sql"))
         .execute(&db_pool)
         .await
-        .map_err(|e| format!("Failed to initialize PostgreSQL schema: {e}"))?;
+        .map_err(|e| {
+            BackendError::Internal(format!("Failed to initialize PostgreSQL schema: {e}"))
+        })?;
 
     let device_repository: Arc<dyn DeviceRepository> =
         Arc::new(PostgresDeviceRepository::new(db_pool.clone()));

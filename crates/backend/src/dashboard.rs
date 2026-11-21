@@ -62,17 +62,20 @@ pub struct UserAction {
 }
 
 pub struct DashboardService {
-    pub(crate) users: Arc<dyn UserRepository>,
-    pub(crate) actions: Arc<dyn UserActionRepository>,
+    pub(crate) _users: Arc<dyn UserRepository>,
+    pub(crate) _actions: Arc<dyn UserActionRepository>,
 }
 
 impl DashboardService {
     pub fn new(users: Arc<dyn UserRepository>, actions: Arc<dyn UserActionRepository>) -> Self {
-        Self { users, actions }
+        Self {
+            _users: users,
+            _actions: actions,
+        }
     }
 
     pub async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> {
-        self.users.list_users().await
+        self._users.list_users().await
     }
 
     pub async fn user_actions(
@@ -82,9 +85,12 @@ impl DashboardService {
     ) -> Result<Vec<UserAction>, BackendError> {
         range.validate()?;
 
-        let mut actions = self.actions.user_actions(user_id, range).await?;
+        let mut actions = self._actions.user_actions(user_id, range).await?;
 
-        let preceding = self.actions.preceding_actions(user_id, range.start).await?;
+        let preceding = self
+            ._actions
+            .preceding_actions(user_id, range.start)
+            .await?;
 
         let mut existing_ids = HashSet::new();
         actions.retain(|action| existing_ids.insert(action.id));

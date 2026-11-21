@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use sqlx::{PgPool, types::Json};
-use timetracker_model::{DeviceId, Event, EventId, EventKind, ObservationKind, UserId};
 use time::OffsetDateTime;
+use timetracker_model::{DeviceId, Event, EventId, EventKind, ObservationKind, UserId};
 
 use crate::{
     BackendError,
@@ -64,9 +64,11 @@ impl EventRepository for PostgresEventRepository {
             let id: Option<uuid::Uuid> = sqlx::query_scalar("INSERT INTO events (id, user_id, device_id, occurred_at, payload, action) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (device_id, id) DO UPDATE SET id = EXCLUDED.id WHERE events.user_id = EXCLUDED.user_id AND events.payload = EXCLUDED.payload RETURNING id")
                 .bind(event.id.0).bind(user_id.0).bind(event.device_id.0).bind(event.occurred_at)
                 .bind(Json(event)).bind(action(event).map(Json)).fetch_optional(&mut *transaction).await?;
-            accepted.push(EventId(
-                id.ok_or("event ID is already associated with different event data")?,
-            ));
+            accepted.push(EventId(id.ok_or_else(|| {
+                BackendError::Internal(
+                    "event ID is already associated with different event data".into(),
+                )
+            })?));
         }
         transaction.commit().await?;
         Ok(accepted)
