@@ -3038,6 +3038,7 @@ dependencies = [
  "timetracker-model",
  "timetracker-proto",
  "tokio",
+ "tokio-stream",
  "tonic",
  "uuid",
  "wayland-client",
