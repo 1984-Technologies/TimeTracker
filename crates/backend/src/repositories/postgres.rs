@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use sqlx::{PgPool, types::Json};
 use timetracker_model::{DeviceId, Event, EventId, EventKind, ObservationKind, UserId};
+use time::OffsetDateTime;
 
 use crate::{
     BackendError,
@@ -111,6 +112,14 @@ impl UserActionRepository for PostgresUserActionRepository {
     ) -> Result<Vec<UserAction>, BackendError> {
         Ok(sqlx::query_scalar::<_, Json<UserAction>>("SELECT action FROM events WHERE user_id = $1 AND occurred_at >= $2 AND occurred_at <= $3 AND action IS NOT NULL ORDER BY occurred_at, id")
             .bind(user_id.0).bind(range.start).bind(range.end).fetch_all(&self.0).await?.into_iter().map(|Json(action)| action).collect())
+    }
+
+    async fn preceding_actions(
+        &self,
+        _user_id: UserId,
+        _before: OffsetDateTime,
+    ) -> Result<Vec<UserAction>, BackendError> {
+        todo!()
     }
 }
 

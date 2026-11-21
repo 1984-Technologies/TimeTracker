@@ -14,11 +14,7 @@ use tokio::sync::watch;
 use tonic::{Request, Response, Status, transport::Server};
 use uuid::Uuid;
 
-use crate::{
-    BackendError,
-    api::ApiServer,
-    collection::{CollectionError, MetricsCollectionService},
-};
+use crate::{BackendError, api::ApiServer, collection::MetricsCollectionService};
 pub use timetracker_proto::metrics as proto;
 
 use proto::{
@@ -238,19 +234,10 @@ impl ClientMetricsUploader for GrpcMetricsServer {
             .collection
             .collect(batch_device_id, &domain_events)
             .await
-            .map_err(|err| {
-                if let Some(collection_err) = err.downcast_ref::<CollectionError>() {
-                    match collection_err {
-                        CollectionError::UnknownDevice(_) => {
-                            Status::not_found(collection_err.to_string())
-                        }
-                        CollectionError::DeviceMismatch { .. } => {
-                            Status::invalid_argument(collection_err.to_string())
-                        }
-                    }
-                } else {
-                    Status::internal(format!("Failed to collect events: {err}"))
-                }
+            .map_err(|err| match err {
+                BackendError::NotFound(message) => Status::not_found(message),
+                BackendError::Validation(message) => Status::invalid_argument(message),
+                BackendError::Internal(message) => Status::internal(message),
             })?;
 
         let accepted_event_ids = receipt
@@ -281,7 +268,8 @@ impl ApiServer for GrpcMetricsServer {
                     }
                 }
             })
-            .await?;
+            .await
+            .map_err(|error| BackendError::Internal(error.to_string()))?;
 
         Ok(())
     }
