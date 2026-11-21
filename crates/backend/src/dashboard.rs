@@ -56,6 +56,7 @@ pub enum UserActionKind {
 pub struct UserAction {
     pub id: EventId,
     pub device_id: DeviceId,
+    #[serde(with = "time::serde::rfc3339")]
     pub occurred_at: OffsetDateTime,
     pub kind: UserActionKind,
 }
@@ -74,7 +75,7 @@ impl DashboardService {
     }
 
     pub async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> {
-        self.users.list_users().await
+        self._users.list_users().await
     }
 
     pub async fn user_actions(
@@ -84,9 +85,12 @@ impl DashboardService {
     ) -> Result<Vec<UserAction>, BackendError> {
         range.validate()?;
 
-        let mut actions = self.actions.user_actions(user_id, range).await?;
+        let mut actions = self._actions.user_actions(user_id, range).await?;
 
-        let preceding = self.actions.preceding_actions(user_id, range.start).await?;
+        let preceding = self
+            ._actions
+            .preceding_actions(user_id, range.start)
+            .await?;
 
         let mut existing_ids = HashSet::new();
         actions.retain(|action| existing_ids.insert(action.id));

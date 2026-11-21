@@ -27,3 +27,9 @@ impl From<std::io::Error> for BackendError {
         Self::Internal(error.to_string())
     }
 }
+
+impl From<sqlx::Error> for BackendError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Internal(error.to_string())
+    }
+}
