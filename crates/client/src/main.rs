@@ -8,7 +8,6 @@ use timetracker_client::{
     upload::GrpcUploadClient,
 };
 
-#[cfg(target_os = "macos")]
 use timetracker_client::adapters::default_adapters;
 
 const ADAPTER_OUTPUT_BUFFER_CAPACITY: usize = 100;
@@ -164,7 +163,7 @@ where
 #[cfg(not(target_os = "macos"))]
 #[tokio::main]
 async fn main() -> Result<(), ClientError> {
-    let adapters: Vec<Box<dyn DesktopAdapter>> = Vec::new();
+    let adapters: Vec<Box<dyn DesktopAdapter>> = default_adapters()?;
     run_client(adapters, wait_for_shutdown_signal(), || {}).await
 }
 
