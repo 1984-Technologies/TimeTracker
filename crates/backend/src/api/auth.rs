@@ -88,6 +88,10 @@ pub async fn authenticate_http(
     )
 }
 
+#[allow(
+    clippy::result_large_err,
+    reason = "gRPC authentication returns tonic::Status for transport errors"
+)]
 pub async fn authenticate_grpc(
     _auth: &AuthService,
     _metadata: &tonic::metadata::MetadataMap,
