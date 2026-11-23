@@ -1,3 +1,4 @@
+use super::ApiError;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -68,6 +69,10 @@ mod health_tests {
     struct DummyUserRepo;
     #[async_trait]
     impl UserRepository for DummyUserRepo {
+        async fn create_user(&self, _name: &str) -> Result<UserSummary, BackendError> {
+            todo!()
+        }
+
         async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> {
             Ok(vec![])
         }
@@ -163,33 +168,6 @@ struct PaginatedResponse<T> {
     offset: u32,
 }
 
-enum HttpError {
-    Backend(BackendError),
-    BadRequest(String),
-}
-
-impl IntoResponse for HttpError {
-    fn into_response(self) -> axum::response::Response {
-        match self {
-            HttpError::Backend(e) => {
-                let status = match &e {
-                    BackendError::Validation(_) => StatusCode::BAD_REQUEST,
-                    BackendError::NotFound(_) => StatusCode::NOT_FOUND,
-                    BackendError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
-                };
-                (status, e.to_string()).into_response()
-            }
-            HttpError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
-        }
-    }
-}
-
-impl From<BackendError> for HttpError {
-    fn from(e: BackendError) -> Self {
-        HttpError::Backend(e)
-    }
-}
-
 async fn wait_for_shutdown(mut shutdown: watch::Receiver<bool>) {
     loop {
         if *shutdown.borrow_and_update() {
@@ -203,7 +181,7 @@ async fn wait_for_shutdown(mut shutdown: watch::Receiver<bool>) {
 
 async fn list_users(
     State(dashboard): State<Arc<DashboardService>>,
-) -> Result<impl IntoResponse, HttpError> {
+) -> Result<impl IntoResponse, ApiError> {
     let users = dashboard.list_users().await?;
     Ok(Json(users))
 }
@@ -212,9 +190,9 @@ async fn user_actions(
     State(dashboard): State<Arc<DashboardService>>,
     Path(user_id): Path<UserId>,
     Query(query): Query<ActionsQuery>,
-) -> Result<impl IntoResponse, HttpError> {
+) -> Result<impl IntoResponse, ApiError> {
     if query.limit == 0 || query.limit > MAX_LIMIT {
-        return Err(HttpError::BadRequest(format!(
+        return Err(ApiError::BadRequest(format!(
             "limit must be between 1 and {}",
             MAX_LIMIT
         )));
@@ -276,6 +254,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl UserRepository for MockUserRepo {
+        async fn create_user(&self, _name: &str) -> Result<UserSummary, BackendError> {
+            todo!()
+        }
+
         async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> {
             Ok(vec![UserSummary {
                 id: UserId(Uuid::new_v4()),
@@ -469,28 +451,28 @@ mod tests {
 
     #[test]
     fn test_error_mapping_validation() {
-        let err = HttpError::Backend(BackendError::Validation("test".to_string()));
+        let err = ApiError::Backend(BackendError::Validation("test".to_string()));
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[test]
     fn test_error_mapping_not_found() {
-        let err = HttpError::Backend(BackendError::NotFound("test".to_string()));
+        let err = ApiError::Backend(BackendError::NotFound("test".to_string()));
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[test]
     fn test_error_mapping_internal() {
-        let err = HttpError::Backend(BackendError::Internal("test".to_string()));
+        let err = ApiError::Backend(BackendError::Internal("test".to_string()));
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[test]
     fn test_error_mapping_bad_request() {
-        let err = HttpError::BadRequest("test".to_string());
+        let err = ApiError::BadRequest("test".to_string());
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }

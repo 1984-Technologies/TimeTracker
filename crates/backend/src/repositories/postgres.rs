@@ -40,6 +40,24 @@ impl PostgresUserActionRepository {
 
 #[async_trait]
 impl DeviceRepository for PostgresDeviceRepository {
+    async fn find(
+        &self,
+        _device_id: timetracker_model::DeviceId,
+    ) -> Result<Option<crate::auth::DeviceRecord>, BackendError> {
+        todo!("Load the device owner and credential hash, returning None for an unknown ID.")
+    }
+    async fn list(&self) -> Result<Vec<crate::auth::DeviceRecord>, BackendError> {
+        todo!("Load all approved devices with their user assignments and credential hashes.")
+    }
+    async fn create_approved(
+        &self,
+        _request: timetracker_model::auth::DeviceApprovalRequest,
+    ) -> Result<crate::auth::DeviceRecord, BackendError> {
+        todo!(
+            "Require an existing user; return identical approvals and reject ID/owner/hash conflicts."
+        )
+    }
+
     async fn owner_of(&self, device_id: DeviceId) -> Result<Option<UserId>, BackendError> {
         Ok(
             sqlx::query_scalar::<_, uuid::Uuid>("SELECT user_id FROM devices WHERE id = $1")
@@ -77,6 +95,10 @@ impl EventRepository for PostgresEventRepository {
 
 #[async_trait]
 impl UserRepository for PostgresUserRepository {
+    async fn create_user(&self, _name: &str) -> Result<UserSummary, BackendError> {
+        todo!("Insert a tracked user with a new UUID and return its summary.")
+    }
+
     async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> {
         Ok(sqlx::query_as::<_, (uuid::Uuid, String)>(
             "SELECT id, name FROM users ORDER BY name, id",
@@ -121,7 +143,9 @@ impl UserActionRepository for PostgresUserActionRepository {
         _user_id: UserId,
         _before: OffsetDateTime,
     ) -> Result<Vec<UserAction>, BackendError> {
-        todo!()
+        todo!(
+            "Return at most PRECEDING_ACTIONS_LIMIT actions strictly before the timestamp, newest first."
+        )
     }
 }
 
@@ -157,4 +181,52 @@ fn action(event: &Event) -> Option<UserAction> {
         occurred_at: event.occurred_at,
         kind,
     })
+}
+
+pub struct PostgresAdminAccountRepository(pub PgPool);
+
+impl PostgresAdminAccountRepository {
+    pub fn new(_pool: PgPool) -> Self {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl super::AdminAccountRepository for PostgresAdminAccountRepository {
+    async fn find_by_id(
+        &self,
+        _id: uuid::Uuid,
+    ) -> Result<Option<crate::auth::AdminAccountRecord>, BackendError> {
+        todo!("Load the admin and password hash, returning None for an unknown ID.")
+    }
+    async fn find_by_username(
+        &self,
+        _username: &str,
+    ) -> Result<Option<crate::auth::AdminAccountRecord>, BackendError> {
+        todo!("Load the admin and password hash for login, returning None for an unknown username.")
+    }
+    async fn list(&self) -> Result<Vec<crate::auth::AdminAccountRecord>, BackendError> {
+        todo!("Load admin records for management; API responses must omit password hashes.")
+    }
+    async fn create(
+        &self,
+        _username: &str,
+        _password_hash: &str,
+    ) -> Result<crate::auth::AdminAccountRecord, BackendError> {
+        todo!("Insert an admin with the supplied password hash and reject duplicate usernames.")
+    }
+    async fn change_password(
+        &self,
+        _id: uuid::Uuid,
+        _password_hash: &str,
+    ) -> Result<(), BackendError> {
+        todo!("Replace the stored password hash or report an unknown admin.")
+    }
+    async fn ensure_initial_account(
+        &self,
+        _username: &str,
+        _password_hash: &str,
+    ) -> Result<(), BackendError> {
+        todo!("Seed an admin only if the table is empty, safely across concurrent startups.")
+    }
 }

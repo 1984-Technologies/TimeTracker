@@ -1,3 +1,5 @@
+pub mod auth;
+
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
