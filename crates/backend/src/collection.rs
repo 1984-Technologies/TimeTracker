@@ -107,6 +107,22 @@ mod tests {
 
     #[async_trait]
     impl DeviceRepository for FakeDeviceRepo {
+        async fn find(
+            &self,
+            _device_id: timetracker_model::DeviceId,
+        ) -> Result<Option<crate::auth::DeviceRecord>, BackendError> {
+            todo!()
+        }
+        async fn list(&self) -> Result<Vec<crate::auth::DeviceRecord>, BackendError> {
+            todo!()
+        }
+        async fn create_approved(
+            &self,
+            _request: timetracker_model::auth::DeviceApprovalRequest,
+        ) -> Result<crate::auth::DeviceRecord, BackendError> {
+            todo!()
+        }
+
         async fn owner_of(&self, device_id: DeviceId) -> Result<Option<UserId>, BackendError> {
             Ok(self.owners.get(&device_id).copied())
         }

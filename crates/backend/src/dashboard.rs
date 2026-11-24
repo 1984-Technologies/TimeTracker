@@ -151,6 +151,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl UserRepository for MockUserRepository {
+        async fn create_user(&self, _name: &str) -> Result<UserSummary, BackendError> {
+            todo!()
+        }
+
         async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> {
             Ok(vec![])
         }

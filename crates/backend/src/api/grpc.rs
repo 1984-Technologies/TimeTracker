@@ -236,6 +236,7 @@ impl ClientMetricsUploader for GrpcMetricsServer {
             .await
             .map_err(|err| match err {
                 BackendError::NotFound(message) => Status::not_found(message),
+                BackendError::Conflict(message) => Status::already_exists(message),
                 BackendError::Validation(message) => Status::invalid_argument(message),
                 BackendError::Internal(message) => Status::internal(message),
             })?;
@@ -286,6 +287,22 @@ mod tests {
     struct TestDeviceRepo(HashMap<DeviceId, UserId>);
     #[async_trait]
     impl DeviceRepository for TestDeviceRepo {
+        async fn find(
+            &self,
+            _device_id: timetracker_model::DeviceId,
+        ) -> Result<Option<crate::auth::DeviceRecord>, BackendError> {
+            todo!()
+        }
+        async fn list(&self) -> Result<Vec<crate::auth::DeviceRecord>, BackendError> {
+            todo!()
+        }
+        async fn create_approved(
+            &self,
+            _request: timetracker_model::auth::DeviceApprovalRequest,
+        ) -> Result<crate::auth::DeviceRecord, BackendError> {
+            todo!()
+        }
+
         async fn owner_of(&self, device_id: DeviceId) -> Result<Option<UserId>, BackendError> {
             Ok(self.0.get(&device_id).copied())
         }

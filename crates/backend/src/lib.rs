@@ -1,4 +1,5 @@
 pub mod api;
+pub mod auth;
 pub mod collection;
 pub mod dashboard;
 pub mod repositories;
@@ -7,6 +8,7 @@ pub mod repositories;
 pub enum BackendError {
     Validation(String),
     NotFound(String),
+    Conflict(String),
     Internal(String),
 }
 
@@ -15,6 +17,7 @@ impl std::fmt::Display for BackendError {
         match self {
             BackendError::Validation(msg) => write!(f, "Validation error: {}", msg),
             BackendError::NotFound(msg) => write!(f, "Not found: {}", msg),
+            BackendError::Conflict(msg) => write!(f, "Conflict: {}", msg),
             BackendError::Internal(msg) => write!(f, "Internal error: {}", msg),
         }
     }
@@ -30,6 +33,13 @@ impl From<std::io::Error> for BackendError {
 
 impl From<sqlx::Error> for BackendError {
     fn from(error: sqlx::Error) -> Self {
-        Self::Internal(error.to_string())
+        if error
+            .as_database_error()
+            .is_some_and(|error| error.is_unique_violation())
+        {
+            Self::Conflict("record already exists".into())
+        } else {
+            Self::Internal(error.to_string())
+        }
     }
 }
