@@ -112,6 +112,19 @@ async fn postgres_persists_idempotently_and_rolls_back_conflicting_batches() {
             .name,
         "Integration Test"
     );
+    assert!(
+        actions
+            .preceding_actions(user, event.occurred_at)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let preceding = actions
+        .preceding_actions(user, event.occurred_at + time::Duration::seconds(1))
+        .await
+        .unwrap();
+    assert_eq!(preceding.len(), 1);
+    assert_eq!(preceding[0].id, event.id);
     let other_device = DeviceId(Uuid::new_v4());
     sqlx::query("INSERT INTO devices (id, user_id) VALUES ($1, $2)")
         .bind(other_device.0)

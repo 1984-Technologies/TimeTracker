@@ -118,10 +118,11 @@ impl UserActionRepository for PostgresUserActionRepository {
 
     async fn preceding_actions(
         &self,
-        _user_id: UserId,
-        _before: OffsetDateTime,
+        user_id: UserId,
+        before: OffsetDateTime,
     ) -> Result<Vec<UserAction>, BackendError> {
-        todo!()
+        Ok(sqlx::query_scalar::<_, Json<UserAction>>("SELECT action FROM events WHERE user_id = $1 AND occurred_at < $2 AND action IS NOT NULL ORDER BY occurred_at DESC, id DESC LIMIT $3")
+            .bind(user_id.0).bind(before).bind(i64::from(crate::dashboard::PRECEDING_ACTIONS_LIMIT)).fetch_all(&self.0).await?.into_iter().map(|Json(action)| action).collect())
     }
 }
 
