@@ -4,12 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run dev:mock",
+    "dev": "npm run dev:real",
     "dev:mock": "concurrently --kill-others --names api,web --prefix-colors cyan,magenta \"npm:mock\" \"vite --mode mock\"",
     "dev:real": "vite --mode real",
     "mock": "tsx mock-server/server.ts",
     "build": "tsc -b && vite build",
-    "test": "tsx --test tests/analytics.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview",
     "test:auth": "node --import tsx --test tests/auth.test.ts tests/mock.test.ts"

@@ -216,6 +216,12 @@ export function UserPage() {
         </div>
       ) : (
         <>
+          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="text-sm font-semibold">Devices in this activity</h2>
+            {[...new Set(orderedActions.map((action) => action.device_id))].map((deviceId) => (
+              <p key={deviceId} className="mt-2 break-all font-mono text-xs text-slate-600">{deviceId}</p>
+            ))}
+          </div>
           <SensorStatusGrid actions={orderedActions} />
           <Suspense
             fallback={
