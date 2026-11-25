@@ -5,6 +5,11 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+base64 = "0.22"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+sha2 = "0.10"
 time.workspace = true
 timetracker-model = { path = "../model" }
 timetracker-proto = { path = "../proto" }
@@ -13,6 +18,8 @@ tonic.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+axum.workspace = true
+serde_json.workspace = true
 tokio-stream = { version = "0.1", features = ["net"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
