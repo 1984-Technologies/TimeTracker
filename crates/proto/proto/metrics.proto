@@ -3,12 +3,14 @@ syntax = "proto3";
 package timetracker.metrics;
 
 service ClientMetricsUploader {
+  // Requires authorization: Bearer <device JWT> metadata.
+  // Reject invalid tokens with UNAUTHENTICATED and admin tokens with PERMISSION_DENIED.
   rpc UploadEvents (UploadEventsRequest) returns (UploadEventsResponse);
 }
 
 message UploadEventsRequest {
-  string device_id = 1;
-  repeated EventMessage events = 2;
+  string device_id = 1; // Must match JWT sub.
+  repeated EventMessage events = 2; // Each device_id must match JWT sub.
 }
 
 message UploadEventsResponse {

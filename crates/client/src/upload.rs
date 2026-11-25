@@ -22,6 +22,16 @@ pub struct GrpcUploadClient {
 }
 
 impl GrpcUploadClient {
+    pub async fn send_authenticated(
+        &self,
+        _auth: &crate::registration::ClientAuthService,
+        _events: &[Event],
+    ) -> Result<Vec<EventId>, ClientError> {
+        todo!(
+            "Upload with a current device JWT and retry once after reauthentication on UNAUTHENTICATED."
+        )
+    }
+
     pub fn new(address: String) -> Result<Self, ClientError> {
         let channel = Endpoint::from_shared(address)?
             .connect_timeout(CONNECT_TIMEOUT)
