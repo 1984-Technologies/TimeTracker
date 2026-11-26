@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 use timetracker_model::{AdapterStatus, Observation, ObservationKind, ObservationType};
 use tokio::sync::{mpsc, watch};
 
-use super::AdapterOutput;
+use super::{AdapterOutput, DEFAULT_ACTIVITY_WINDOW_DURATION, MouseKeyboardActivityAdapter};
 
 pub use idle::IdleAdapter;
 pub use input::{KeyboardAdapter, MouseClickAdapter, MouseMoveAdapter};
@@ -74,9 +74,12 @@ fn build_default_adapters(
             initial_app_id,
         )),
         Box::new(IdleAdapter::default()),
-        Box::new(KeyboardAdapter::new()),
-        Box::new(MouseClickAdapter::new()),
-        Box::new(MouseMoveAdapter::new()),
+        Box::new(MouseKeyboardActivityAdapter::new(
+            Box::new(KeyboardAdapter::new()),
+            Box::new(MouseClickAdapter::new()),
+            Box::new(MouseMoveAdapter::new()),
+            DEFAULT_ACTIVITY_WINDOW_DURATION,
+        )),
     ]
 }
 
@@ -111,9 +114,7 @@ mod tests {
             vec![
                 ObservationType::FocusedApplication,
                 ObservationType::Idle,
-                ObservationType::Keyboard,
-                ObservationType::MouseClick,
-                ObservationType::MouseMove,
+                ObservationType::MouseKeyboardActivity,
             ]
         );
     }

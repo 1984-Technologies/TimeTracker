@@ -25,6 +25,7 @@ enum ObservationTypeProto {
   MOUSE_CLICK = 4;
   MOUSE_MOVE = 5;
   BROWSER_ACTIVITY = 6;
+  MOUSE_KEYBOARD_ACTIVITY = 7;
 }
 
 message AdapterStatusMessage {
@@ -77,6 +78,13 @@ message BrowserWindowFocusChangedMessage {
   bool focused = 3;
 }
 
+message MouseKeyboardActivitySummaryMessage {
+  uint64 keypress_count = 1;
+  uint64 mouse_click_count = 2;
+  uint64 mouse_move_count = 3;
+  uint64 window_duration_ms = 4;
+}
+
 message EventMessage {
   string id = 1;
   string device_id = 2;
@@ -98,5 +106,6 @@ message EventMessage {
     ActiveBrowserTabChangedMessage active_browser_tab_changed = 14;
     ActiveBrowserTabTitleChangedMessage active_browser_tab_title_changed = 15;
     BrowserWindowFocusChangedMessage browser_window_focus_changed = 16;
+    MouseKeyboardActivitySummaryMessage mouse_keyboard_activity_summary = 17;
   }
 }
