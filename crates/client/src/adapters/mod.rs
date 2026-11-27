@@ -6,6 +6,8 @@ use crate::ClientError;
 
 #[cfg(target_os = "linux")]
 pub mod hyprland;
+#[cfg(target_os = "windows")]
+pub mod windows;
 
 pub enum AdapterOutput {
     Observation(Observation),
@@ -60,7 +62,12 @@ fn is_hyprland_session(desktop: Option<&str>, signature: Option<&str>) -> bool {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(target_os = "windows")]
+pub fn default_adapters() -> Result<Vec<Box<dyn DesktopAdapter>>, crate::ClientError> {
+    Ok(windows::default_adapters())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub fn default_adapters() -> Result<Vec<Box<dyn DesktopAdapter>>, crate::ClientError> {
     Ok(Vec::new())
 }
