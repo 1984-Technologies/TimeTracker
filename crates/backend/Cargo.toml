@@ -9,7 +9,7 @@ axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx = { workspace = true, features = ["postgres", "json"] }
-
+argon2 = { version = "0.5", features = ["std"] }
 timetracker-model = { path = "../model" }
 timetracker-proto = { path = "../proto" }
 
