@@ -188,11 +188,11 @@ impl DesktopAdapter for MouseKeyboardActivityAdapter {
                         Some(Ok((index, child))) => {
                             restored_children.push((index, child));
                         }
-                        Some(Err(error)) => {
-                            if first_join_error.is_none() {
-                                first_join_error = Some(error);
-                            }
+                        Some(Err(error)) if first_join_error.is_none() => {
+                            first_join_error = Some(error);
                         }
+
+                        Some(Err(_)) => {}
                         None => {}
                     }
 

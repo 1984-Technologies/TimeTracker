@@ -112,10 +112,10 @@ impl MacOsAdapterRuntime {
 impl Drop for MacOsAdapterRuntime {
     fn drop(&mut self) {
         let _ = self.forwarder_stop_tx.send(());
-        if let Some(event_forwarder) = self.event_forwarder.take() {
-            if event_forwarder.join().is_err() {
-                eprintln!("[NSWorkspace ERROR] event-forwarder thread panicked");
-            }
+        if let Some(event_forwarder) = self.event_forwarder.take()
+            && event_forwarder.join().is_err()
+        {
+            eprintln!("[NSWorkspace ERROR] event-forwarder thread panicked");
         }
     }
 }
