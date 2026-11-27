@@ -1,5 +1,7 @@
+use argon2::password_hash::SaltString;
+use argon2::password_hash::rand_core::OsRng;
+use argon2::{Argon2, PasswordHasher};
 use std::sync::Arc;
-
 use timetracker_model::auth::{
     AdminLoginRequest, DeviceCredentials, JwtClaims, RegistrationResponse, TokenResponse,
 };
@@ -9,12 +11,14 @@ use crate::{
     repositories::{AdminAccountRepository, DeviceRepository},
 };
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdminAccountRecord {
     pub id: uuid::Uuid,
     pub username: String,
     pub password_hash: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeviceRecord {
     pub device_id: timetracker_model::DeviceId,
     pub user_id: timetracker_model::UserId,
@@ -33,6 +37,19 @@ pub struct AuthService {
     pub admins: Arc<dyn AdminAccountRepository>,
     pub devices: Arc<dyn DeviceRepository>,
     pub jwt_secret: String,
+}
+
+pub fn hash_password(password: &str) -> Result<String, BackendError> {
+    if password.is_empty() {
+        return Err(BackendError::Validation(
+            "password must not be empty".into(),
+        ));
+    }
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|error| BackendError::Internal(format!("failed to hash password: {error}")))
 }
 
 impl AuthService {

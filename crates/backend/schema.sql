@@ -2,9 +2,15 @@ CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS admin_accounts (
+    id UUID PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS devices (
     id UUID PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id)
+    user_id UUID NOT NULL REFERENCES users(id),
+    credential_hash TEXT NOT NULL CHECK (credential_hash ~ '^[0-9a-f]{64}$')
 );
 CREATE TABLE IF NOT EXISTS events (
     id UUID NOT NULL,
