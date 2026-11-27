@@ -199,6 +199,25 @@ impl DesktopAdapter for MouseKeyboardActivityAdapter {
                     stopping_children = true;
                 }
 
+                _ = ticker.tick() => {
+                    let duration = window_started.elapsed();
+                    let summary = window.summary_and_reset(duration);
+
+                    window_started = Instant::now();
+
+                    if output
+                        .send(AdapterOutput::Observation(Observation {
+                            occurred_at: OffsetDateTime::now_utc(),
+                            kind: summary,
+                        }))
+                        .await
+                        .is_err()
+                    {
+                        can_send = false;
+                        stopping_children = true;
+                    }
+                }
+
                 event = child_output_rx.recv() => {
                     match event {
                         Some(event) => {
@@ -224,25 +243,6 @@ impl DesktopAdapter for MouseKeyboardActivityAdapter {
                         None => {
                             break;
                         }
-                    }
-                }
-
-                _ = ticker.tick() => {
-                    let duration = window_started.elapsed();
-                    let summary = window.summary_and_reset(duration);
-
-                    window_started = Instant::now();
-
-                    if output
-                        .send(AdapterOutput::Observation(Observation {
-                            occurred_at: OffsetDateTime::now_utc(),
-                            kind: summary,
-                        }))
-                        .await
-                        .is_err()
-                    {
-                        can_send = false;
-                        stopping_children = true;
                     }
                 }
             }
