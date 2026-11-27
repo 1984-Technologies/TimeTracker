@@ -7,12 +7,14 @@ use tracing::{error, info};
 
 use timetracker_backend::{
     BackendError,
-    api::{ApiServer, GrpcMetricsServer, HttpDashboardServer},
+    api::{ApiServer, GrpcMetricsServer, HttpDashboardServer, auth::HttpAuthApi},
+    auth::AuthService,
     collection::MetricsCollectionService,
     dashboard::DashboardService,
     repositories::{
-        DeviceRepository, EventRepository, PostgresDeviceRepository, PostgresEventRepository,
-        PostgresUserActionRepository, PostgresUserRepository, UserActionRepository, UserRepository,
+        AdminAccountRepository, DeviceRepository, EventRepository, PostgresAdminAccountRepository,
+        PostgresDeviceRepository, PostgresEventRepository, PostgresUserActionRepository,
+        PostgresUserRepository, UserActionRepository, UserRepository,
     },
 };
 
@@ -73,6 +75,9 @@ async fn main() -> Result<(), BackendError> {
     let database_url = read_env_var("DATABASE_URL")?;
     let grpc_bind_addr = read_socket_addr("GRPC_BIND_ADDR")?;
     let http_bind_addr = read_socket_addr("HTTP_BIND_ADDR")?;
+    let jwt_secret = read_env_var("JWT_SECRET")?;
+    let dashboard_origin =
+        env::var("DASHBOARD_ORIGIN").unwrap_or_else(|_| "http://localhost:5173".into());
     info!("Connecting to PostgreSQL database...");
 
     let db_pool = PgPoolOptions::new()
@@ -99,7 +104,25 @@ async fn main() -> Result<(), BackendError> {
     let user_repository: Arc<dyn UserRepository> =
         Arc::new(PostgresUserRepository::new(db_pool.clone()));
     let user_action_repository: Arc<dyn UserActionRepository> =
-        Arc::new(PostgresUserActionRepository::new(db_pool));
+        Arc::new(PostgresUserActionRepository::new(db_pool.clone()));
+    let admin_repository: Arc<dyn AdminAccountRepository> =
+        Arc::new(PostgresAdminAccountRepository::new(db_pool));
+    let auth = Arc::new(AuthService::new(
+        admin_repository.clone(),
+        device_repository.clone(),
+        jwt_secret,
+    )?);
+    if admin_repository.list().await?.is_empty() {
+        let username = read_env_var("INITIAL_ADMIN_USERNAME")?;
+        let password = read_env_var("INITIAL_ADMIN_PASSWORD")?;
+        // Bootstrap only an empty table; concurrent starts cannot add extra admins.
+        auth.ensure_initial_admin(timetracker_model::auth::AdminLoginRequest {
+            username,
+            password,
+        })
+        .await?;
+    }
+    let auth_api = Arc::new(HttpAuthApi::new(auth.clone(), user_repository.clone()));
 
     let collection_service = Arc::new(MetricsCollectionService::new(
         device_repository,
@@ -110,8 +133,8 @@ async fn main() -> Result<(), BackendError> {
         user_action_repository,
     ));
 
-    let grpc_server = GrpcMetricsServer::new(collection_service);
-    let http_server = HttpDashboardServer::new(dashboard_service);
+    let grpc_server = GrpcMetricsServer::new(collection_service, auth);
+    let http_server = HttpDashboardServer::new(dashboard_service, auth_api, &dashboard_origin)?;
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 

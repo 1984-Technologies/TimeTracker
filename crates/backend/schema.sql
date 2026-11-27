@@ -17,3 +17,13 @@ CREATE TABLE IF NOT EXISTS events (
     PRIMARY KEY (device_id, id)
 );
 CREATE INDEX IF NOT EXISTS events_user_time ON events(user_id, occurred_at, id);
+
+-- Legacy devices remain associated with their events but cannot authenticate
+-- until an admin supplies their credential hash through the approval API.
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS credential_hash TEXT
+    CHECK (credential_hash ~ '^[0-9a-f]{64}$');
+CREATE TABLE IF NOT EXISTS admin_accounts (
+    id UUID PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL
+);

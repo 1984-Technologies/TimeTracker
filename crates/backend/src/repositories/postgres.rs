@@ -42,20 +42,37 @@ impl PostgresUserActionRepository {
 impl DeviceRepository for PostgresDeviceRepository {
     async fn find(
         &self,
-        _device_id: timetracker_model::DeviceId,
+        device_id: timetracker_model::DeviceId,
     ) -> Result<Option<crate::auth::DeviceRecord>, BackendError> {
-        todo!("Load the device owner and credential hash, returning None for an unknown ID.")
+        Ok(sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid, String)>(
+            "SELECT id, user_id, credential_hash FROM devices WHERE id = $1 AND credential_hash IS NOT NULL")
+            .bind(device_id.0).fetch_optional(&self.0).await?.map(device_record))
     }
     async fn list(&self) -> Result<Vec<crate::auth::DeviceRecord>, BackendError> {
-        todo!("Load all approved devices with their user assignments and credential hashes.")
+        Ok(sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid, String)>(
+            "SELECT id, user_id, credential_hash FROM devices WHERE credential_hash IS NOT NULL ORDER BY id")
+            .fetch_all(&self.0).await?.into_iter().map(device_record).collect())
     }
     async fn create_approved(
         &self,
-        _request: timetracker_model::auth::DeviceApprovalRequest,
+        request: timetracker_model::auth::DeviceApprovalRequest,
     ) -> Result<crate::auth::DeviceRecord, BackendError> {
-        todo!(
-            "Require an existing user; return identical approvals and reject ID/owner/hash conflicts."
-        )
+        crate::auth::decode_credential_hash(&request.credential_hash)?;
+        let record = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid, String)>(
+            "INSERT INTO devices (id, user_id, credential_hash) VALUES ($1, $2, $3)
+             ON CONFLICT (id) DO UPDATE SET credential_hash = EXCLUDED.credential_hash
+             WHERE devices.user_id = EXCLUDED.user_id
+               AND (devices.credential_hash IS NULL OR devices.credential_hash = EXCLUDED.credential_hash)
+             RETURNING id, user_id, credential_hash")
+            .bind(request.device_id.0).bind(request.user_id.0).bind(request.credential_hash)
+            .fetch_optional(&self.0).await.map_err(|error| {
+                if error.as_database_error().is_some_and(|e| e.is_foreign_key_violation()) {
+                    BackendError::NotFound("User not found".into())
+                } else { error.into() }
+            })?;
+        record.map(device_record).ok_or_else(|| {
+            BackendError::Conflict("Device already has different ownership or credentials".into())
+        })
     }
 
     async fn owner_of(&self, device_id: DeviceId) -> Result<Option<UserId>, BackendError> {
@@ -83,7 +100,7 @@ impl EventRepository for PostgresEventRepository {
                 .bind(event.id.0).bind(user_id.0).bind(event.device_id.0).bind(event.occurred_at)
                 .bind(Json(event)).bind(action(event).map(Json)).fetch_optional(&mut *transaction).await?;
             accepted.push(EventId(id.ok_or_else(|| {
-                BackendError::Internal(
+                BackendError::Conflict(
                     "event ID is already associated with different event data".into(),
                 )
             })?));
@@ -95,8 +112,17 @@ impl EventRepository for PostgresEventRepository {
 
 #[async_trait]
 impl UserRepository for PostgresUserRepository {
-    async fn create_user(&self, _name: &str) -> Result<UserSummary, BackendError> {
-        todo!("Insert a tracked user with a new UUID and return its summary.")
+    async fn create_user(&self, name: &str) -> Result<UserSummary, BackendError> {
+        let id = uuid::Uuid::new_v4();
+        sqlx::query("INSERT INTO users (id, name) VALUES ($1, $2)")
+            .bind(id)
+            .bind(name)
+            .execute(&self.0)
+            .await?;
+        Ok(UserSummary {
+            id: UserId(id),
+            name: name.into(),
+        })
     }
 
     async fn list_users(&self) -> Result<Vec<UserSummary>, BackendError> {
@@ -140,12 +166,13 @@ impl UserActionRepository for PostgresUserActionRepository {
 
     async fn preceding_actions(
         &self,
-        _user_id: UserId,
-        _before: OffsetDateTime,
+        user_id: UserId,
+        before: OffsetDateTime,
     ) -> Result<Vec<UserAction>, BackendError> {
-        todo!(
-            "Return at most PRECEDING_ACTIONS_LIMIT actions strictly before the timestamp, newest first."
-        )
+        Ok(sqlx::query_scalar::<_, Json<UserAction>>(
+            "SELECT action FROM events WHERE user_id = $1 AND occurred_at < $2 AND action IS NOT NULL ORDER BY occurred_at DESC, id DESC LIMIT $3")
+            .bind(user_id.0).bind(before).bind(i64::from(crate::dashboard::PRECEDING_ACTIONS_LIMIT))
+            .fetch_all(&self.0).await?.into_iter().map(|Json(action)| action).collect())
     }
 }
 
@@ -186,8 +213,8 @@ fn action(event: &Event) -> Option<UserAction> {
 pub struct PostgresAdminAccountRepository(pub PgPool);
 
 impl PostgresAdminAccountRepository {
-    pub fn new(_pool: PgPool) -> Self {
-        todo!()
+    pub fn new(pool: PgPool) -> Self {
+        Self(pool)
     }
 }
 
@@ -195,38 +222,92 @@ impl PostgresAdminAccountRepository {
 impl super::AdminAccountRepository for PostgresAdminAccountRepository {
     async fn find_by_id(
         &self,
-        _id: uuid::Uuid,
+        id: uuid::Uuid,
     ) -> Result<Option<crate::auth::AdminAccountRecord>, BackendError> {
-        todo!("Load the admin and password hash, returning None for an unknown ID.")
+        Ok(sqlx::query_as::<_, (uuid::Uuid, String, String)>(
+            "SELECT id, username, password_hash FROM admin_accounts WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&self.0)
+        .await?
+        .map(admin_record))
     }
     async fn find_by_username(
         &self,
-        _username: &str,
+        username: &str,
     ) -> Result<Option<crate::auth::AdminAccountRecord>, BackendError> {
-        todo!("Load the admin and password hash for login, returning None for an unknown username.")
+        Ok(sqlx::query_as::<_, (uuid::Uuid, String, String)>(
+            "SELECT id, username, password_hash FROM admin_accounts WHERE username = $1",
+        )
+        .bind(username)
+        .fetch_optional(&self.0)
+        .await?
+        .map(admin_record))
     }
     async fn list(&self) -> Result<Vec<crate::auth::AdminAccountRecord>, BackendError> {
-        todo!("Load admin records for management; API responses must omit password hashes.")
+        Ok(sqlx::query_as::<_, (uuid::Uuid, String, String)>(
+            "SELECT id, username, password_hash FROM admin_accounts ORDER BY username, id",
+        )
+        .fetch_all(&self.0)
+        .await?
+        .into_iter()
+        .map(admin_record)
+        .collect())
     }
     async fn create(
         &self,
-        _username: &str,
-        _password_hash: &str,
+        username: &str,
+        password_hash: &str,
     ) -> Result<crate::auth::AdminAccountRecord, BackendError> {
-        todo!("Insert an admin with the supplied password hash and reject duplicate usernames.")
+        Ok(admin_record(sqlx::query_as::<_, (uuid::Uuid, String, String)>(
+            "INSERT INTO admin_accounts (id, username, password_hash) VALUES ($1, $2, $3) RETURNING id, username, password_hash")
+            .bind(uuid::Uuid::new_v4()).bind(username).bind(password_hash).fetch_one(&self.0).await?))
     }
     async fn change_password(
         &self,
-        _id: uuid::Uuid,
-        _password_hash: &str,
+        id: uuid::Uuid,
+        password_hash: &str,
     ) -> Result<(), BackendError> {
-        todo!("Replace the stored password hash or report an unknown admin.")
+        let result = sqlx::query("UPDATE admin_accounts SET password_hash = $1 WHERE id = $2")
+            .bind(password_hash)
+            .bind(id)
+            .execute(&self.0)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(BackendError::NotFound("Admin not found".into()));
+        }
+        Ok(())
     }
     async fn ensure_initial_account(
         &self,
-        _username: &str,
-        _password_hash: &str,
+        username: &str,
+        password_hash: &str,
     ) -> Result<(), BackendError> {
-        todo!("Seed an admin only if the table is empty, safely across concurrent startups.")
+        let mut transaction = self.0.begin().await?;
+        sqlx::query("LOCK TABLE admin_accounts IN EXCLUSIVE MODE")
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query("INSERT INTO admin_accounts (id, username, password_hash) SELECT $1, $2, $3 WHERE NOT EXISTS (SELECT 1 FROM admin_accounts)")
+            .bind(uuid::Uuid::new_v4()).bind(username).bind(password_hash).execute(&mut *transaction).await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+}
+
+fn device_record((id, user, hash): (uuid::Uuid, uuid::Uuid, String)) -> crate::auth::DeviceRecord {
+    crate::auth::DeviceRecord {
+        device_id: DeviceId(id),
+        user_id: UserId(user),
+        credential_hash: hash,
+    }
+}
+
+fn admin_record(
+    (id, username, password_hash): (uuid::Uuid, String, String),
+) -> crate::auth::AdminAccountRecord {
+    crate::auth::AdminAccountRecord {
+        id,
+        username,
+        password_hash,
     }
 }

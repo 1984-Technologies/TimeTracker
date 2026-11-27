@@ -15,6 +15,7 @@ use tonic::{Request, Response, Status, transport::Server};
 use uuid::Uuid;
 
 use crate::{BackendError, api::ApiServer, collection::MetricsCollectionService};
+use crate::{api::auth::grpc_identity, auth::AuthService};
 pub use timetracker_proto::metrics as proto;
 
 use proto::{
@@ -27,11 +28,12 @@ use proto::{
 #[derive(Clone)]
 pub struct GrpcMetricsServer {
     pub(crate) collection: Arc<MetricsCollectionService>,
+    auth: Arc<AuthService>,
 }
 
 impl GrpcMetricsServer {
-    pub fn new(collection: Arc<MetricsCollectionService>) -> Self {
-        Self { collection }
+    pub fn new(collection: Arc<MetricsCollectionService>, auth: Arc<AuthService>) -> Self {
+        Self { collection, auth }
     }
 }
 
@@ -220,9 +222,15 @@ impl ClientMetricsUploader for GrpcMetricsServer {
         &self,
         request: Request<UploadEventsRequest>,
     ) -> Result<Response<UploadEventsResponse>, Status> {
+        let claims = grpc_identity(&self.auth, request.metadata()).await?;
         let payload = request.into_inner();
 
         let batch_device_id = DeviceId(parse_uuid(&payload.device_id, "device_id")?);
+        if claims.sub != batch_device_id.0 {
+            return Err(Status::invalid_argument(
+                "device_id must match token subject",
+            ));
+        }
 
         let domain_events: Vec<Event> = payload
             .events
@@ -235,10 +243,10 @@ impl ClientMetricsUploader for GrpcMetricsServer {
             .collect(batch_device_id, &domain_events)
             .await
             .map_err(|err| match err {
-                BackendError::NotFound(message) => Status::not_found(message),
+                BackendError::NotFound(_) => Status::unauthenticated("Unknown device"),
                 BackendError::Conflict(message) => Status::already_exists(message),
                 BackendError::Validation(message) => Status::invalid_argument(message),
-                BackendError::Internal(message) => Status::internal(message),
+                BackendError::Internal(_) => Status::internal("Upload unavailable"),
             })?;
 
         let accepted_event_ids = receipt
@@ -325,11 +333,34 @@ mod tests {
         if let Some(dev) = known_device {
             map.insert(dev, UserId(Uuid::new_v4()));
         }
+        let store = Arc::new(crate::test_support::Store::default());
+        for (&device_id, &user_id) in &map {
+            store.devices.lock().unwrap().insert(
+                device_id,
+                crate::auth::DeviceRecord {
+                    device_id,
+                    user_id,
+                    credential_hash: "00".repeat(32),
+                },
+            );
+        }
         let service = Arc::new(MetricsCollectionService::new(
             Arc::new(TestDeviceRepo(map)),
             Arc::new(TestEventRepo),
         ));
-        GrpcMetricsServer::new(service)
+        GrpcMetricsServer::new(service, crate::test_support::auth(store))
+    }
+
+    fn authenticated_request(payload: UploadEventsRequest) -> Request<UploadEventsRequest> {
+        let token = crate::test_support::token(
+            Uuid::parse_str(&payload.device_id).unwrap(),
+            timetracker_model::auth::PrincipalKind::Device,
+        );
+        let mut request = Request::new(payload);
+        request
+            .metadata_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
+        request
     }
 
     fn valid_proto_event(event_id: Uuid, device_id: Uuid) -> EventMessage {
@@ -347,7 +378,7 @@ mod tests {
         let event_uuid = Uuid::new_v4();
         let server = setup_grpc_server(Some(DeviceId(device_uuid)));
 
-        let req = Request::new(UploadEventsRequest {
+        let req = authenticated_request(UploadEventsRequest {
             device_id: device_uuid.to_string(),
             events: vec![valid_proto_event(event_uuid, device_uuid)],
         });
@@ -364,7 +395,7 @@ mod tests {
         let mut bad_event = valid_proto_event(Uuid::new_v4(), device_uuid);
         bad_event.id = "not-a-valid-uuid".to_string();
 
-        let req = Request::new(UploadEventsRequest {
+        let req = authenticated_request(UploadEventsRequest {
             device_id: device_uuid.to_string(),
             events: vec![valid_proto_event(Uuid::new_v4(), device_uuid), bad_event],
         });
@@ -374,16 +405,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upload_events_rejects_unknown_device_with_not_found() {
+    async fn upload_events_rejects_unknown_device_with_unauthenticated() {
         let server = setup_grpc_server(None);
         let unknown_device = Uuid::new_v4();
 
-        let req = Request::new(UploadEventsRequest {
+        let req = authenticated_request(UploadEventsRequest {
             device_id: unknown_device.to_string(),
             events: vec![valid_proto_event(Uuid::new_v4(), unknown_device)],
         });
 
         let err = server.upload_events(req).await.unwrap_err();
-        assert_eq!(err.code(), Code::NotFound);
+        assert_eq!(err.code(), Code::Unauthenticated);
     }
 }

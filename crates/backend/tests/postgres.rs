@@ -4,6 +4,9 @@ use timetracker_backend::{dashboard::TimeRange, repositories::*};
 use timetracker_model::*;
 use uuid::Uuid;
 
+#[path = "postgres/auth.rs"]
+mod auth;
+
 #[tokio::test]
 #[ignore = "requires an isolated TEST_DATABASE_URL"]
 async fn postgres_persists_idempotently_and_rolls_back_conflicting_batches() {
