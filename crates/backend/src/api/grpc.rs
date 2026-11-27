@@ -144,6 +144,14 @@ fn convert_proto_event(
                 focused: changed.focused,
             })
         }
+        event_message::Kind::MouseKeyboardActivitySummary(summary) => {
+            EventKind::Observation(ObservationKind::MouseKeyboardActivitySummary {
+                keypress_count: summary.keypress_count,
+                mouse_click_count: summary.mouse_click_count,
+                mouse_move_count: summary.mouse_move_count,
+                window_duration_ms: summary.window_duration_ms,
+            })
+        }
         event_message::Kind::AdapterStatus(status_msg) => convert_adapter_status(status_msg)?,
     };
 
@@ -188,6 +196,7 @@ fn convert_adapter_status(msg: AdapterStatusMessage) -> Result<EventKind, Status
         ObservationTypeProto::MouseClick => ObservationType::MouseClick,
         ObservationTypeProto::MouseMove => ObservationType::MouseMove,
         ObservationTypeProto::BrowserActivity => ObservationType::BrowserActivity,
+        ObservationTypeProto::MouseKeyboardActivity => ObservationType::MouseKeyboardActivity,
     };
 
     let status = match msg.status {

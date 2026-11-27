@@ -4,10 +4,12 @@ use timetracker_model::{AdapterStatus, DeviceId, Event, EventId, EventKind, Obse
 use timetracker_proto::metrics::{
     ActiveBrowserTabChangedMessage, ActiveBrowserTabTitleChangedMessage, AdapterStatusMessage,
     BrowserWindowFocusChangedMessage, EventMessage, FocusedApplicationChangedMessage,
-    KeyboardButtonPressedMessage, MouseClickedMessage, MouseMovedMessage, ObservationTypeProto,
-    UploadEventsRequest, UploadEventsResponse, adapter_status_message,
-    client_metrics_uploader_client::ClientMetricsUploaderClient, event_message,
+    KeyboardButtonPressedMessage, MouseClickedMessage, MouseKeyboardActivitySummaryMessage,
+    MouseMovedMessage, ObservationTypeProto, UploadEventsRequest, UploadEventsResponse,
+    adapter_status_message, client_metrics_uploader_client::ClientMetricsUploaderClient,
+    event_message,
 };
+
 use tonic::{
     Code,
     transport::{Channel, Endpoint},
@@ -164,6 +166,9 @@ fn event_to_proto(event: &Event) -> Result<EventMessage, ClientError> {
                 timetracker_model::ObservationType::BrowserActivity => {
                     ObservationTypeProto::BrowserActivity
                 }
+                timetracker_model::ObservationType::MouseKeyboardActivity => {
+                    ObservationTypeProto::MouseKeyboardActivity
+                }
             };
             let status = match status {
                 AdapterStatus::Available => adapter_status_message::Status::Available(true),
@@ -248,6 +253,19 @@ fn observation_to_proto(observation: &ObservationKind) -> event_message::Kind {
             window_id: *window_id,
             focused: *focused,
         }),
+        ObservationKind::MouseKeyboardActivitySummary {
+            keypress_count,
+            mouse_click_count,
+            mouse_move_count,
+            window_duration_ms,
+        } => {
+            event_message::Kind::MouseKeyboardActivitySummary(MouseKeyboardActivitySummaryMessage {
+                keypress_count: *keypress_count,
+                mouse_click_count: *mouse_click_count,
+                mouse_move_count: *mouse_move_count,
+                window_duration_ms: *window_duration_ms,
+            })
+        }
     }
 }
 
