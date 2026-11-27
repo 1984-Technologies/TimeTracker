@@ -1,4 +1,3 @@
-
 use std::{io, time::Duration};
 
 use timetracker_model::{AdapterStatus, DeviceId, Event, EventId, EventKind, ObservationKind};
