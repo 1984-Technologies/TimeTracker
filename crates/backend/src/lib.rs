@@ -4,6 +4,13 @@ pub mod collection;
 pub mod dashboard;
 pub mod repositories;
 
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub mod fuzz_support;
+
+#[cfg(test)]
+pub(crate) mod test_support;
+
 #[derive(Debug)]
 pub enum BackendError {
     Validation(String),

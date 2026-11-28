@@ -4,8 +4,12 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
-    http::StatusCode,
+    extract::State,
+    http::{
+        HeaderValue, Method, StatusCode, Uri,
+        header::{AUTHORIZATION, CONTENT_TYPE},
+    },
+    middleware,
     response::IntoResponse,
     routing::get,
 };
@@ -13,44 +17,119 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use timetracker_model::UserId;
 use tokio::sync::watch;
-use tower_http::{
-    cors::{Any, CorsLayer},
-    trace::TraceLayer,
-};
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::{
     BackendError,
-    api::ApiServer,
+    api::{
+        ApiServer,
+        auth::{HttpAuthApi, authenticate_http},
+        error::{ApiPath, ApiQuery},
+    },
     dashboard::{DashboardService, TimeRange},
 };
 
 pub struct HttpDashboardServer {
     pub(crate) dashboard: Arc<DashboardService>,
+    auth_api: Arc<HttpAuthApi>,
+    dashboard_origin: HeaderValue,
 }
 
 impl HttpDashboardServer {
-    pub fn new(dashboard: Arc<DashboardService>) -> Self {
-        Self { dashboard }
+    pub fn new(
+        dashboard: Arc<DashboardService>,
+        auth_api: Arc<HttpAuthApi>,
+        dashboard_origin: &str,
+    ) -> Result<Self, BackendError> {
+        let uri: Uri = dashboard_origin
+            .parse()
+            .map_err(|_| BackendError::Validation("Invalid DASHBOARD_ORIGIN".into()))?;
+        if !matches!(uri.scheme_str(), Some("http" | "https"))
+            || uri.authority().is_none()
+            || uri.authority().is_some_and(|a| a.as_str().contains('@'))
+            || uri
+                .path_and_query()
+                .is_some_and(|p| p.as_str() != "/" && !p.as_str().is_empty())
+        {
+            return Err(BackendError::Validation(
+                "DASHBOARD_ORIGIN must be an HTTP(S) origin without a path".into(),
+            ));
+        }
+        // Browser Origin values have no trailing slash.
+        let normalized = format!(
+            "{}://{}",
+            uri.scheme_str().unwrap_or_default(),
+            uri.authority().map(|a| a.as_str()).unwrap_or_default()
+        );
+        let dashboard_origin = HeaderValue::from_str(&normalized)
+            .map_err(|_| BackendError::Validation("Invalid DASHBOARD_ORIGIN".into()))?;
+        Ok(Self {
+            dashboard,
+            auth_api,
+            dashboard_origin,
+        })
     }
 
     pub fn router(&self) -> Router {
-        Router::new()
-            .route("/health", get(health_check))
+        let private = Router::new()
             .route("/users", get(list_users))
             .route("/users/{id}/actions", get(user_actions))
+            .route_layer(middleware::from_fn_with_state(
+                self.auth_api.auth.clone(),
+                authenticate_http,
+            ))
+            .with_state(Arc::clone(&self.dashboard));
+        Router::new()
+            .merge(private)
+            .merge(self.auth_api.router())
+            .route("/health", get(health_check))
+            .fallback(|| async {
+                ApiError::Backend(BackendError::NotFound("Route not found".into()))
+            })
+            .method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
             .layer(TraceLayer::new_for_http())
             .layer(
                 CorsLayer::new()
-                    .allow_origin(Any)
-                    .allow_methods(Any)
-                    .allow_headers(Any),
+                    .allow_origin(self.dashboard_origin.clone())
+                    .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::OPTIONS])
+                    .allow_headers([AUTHORIZATION, CONTENT_TYPE]),
             )
-            .with_state(Arc::clone(&self.dashboard))
     }
 }
 
 async fn health_check() -> StatusCode {
     StatusCode::OK
+}
+
+#[cfg(test)]
+fn admin_header() -> String {
+    format!(
+        "Bearer {}",
+        crate::test_support::token(
+            crate::test_support::ADMIN_ID,
+            timetracker_model::auth::PrincipalKind::Admin
+        )
+    )
+}
+
+#[cfg(test)]
+fn test_server(dashboard: Arc<DashboardService>) -> HttpDashboardServer {
+    use crate::{auth::AdminAccountRecord, test_support::*};
+    let store = Arc::new(Store::default());
+    store.admins.lock().unwrap().insert(
+        ADMIN_ID,
+        AdminAccountRecord {
+            id: ADMIN_ID,
+            username: "admin".into(),
+            password_hash: String::new(),
+        },
+    );
+    HttpDashboardServer::new(
+        dashboard,
+        Arc::new(HttpAuthApi::new(auth(store.clone()), store)),
+        "http://localhost:5173",
+    )
+    .unwrap()
 }
 
 #[cfg(test)]
@@ -106,7 +185,7 @@ mod health_tests {
             Arc::new(DummyUserRepo),
             Arc::new(DummyActionRepo),
         ));
-        let server = HttpDashboardServer::new(dashboard);
+        let server = test_server(dashboard);
 
         let temp_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = temp_listener.local_addr().unwrap();
@@ -188,8 +267,8 @@ async fn list_users(
 
 async fn user_actions(
     State(dashboard): State<Arc<DashboardService>>,
-    Path(user_id): Path<UserId>,
-    Query(query): Query<ActionsQuery>,
+    ApiPath(user_id): ApiPath<UserId>,
+    ApiQuery(query): ApiQuery<ActionsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     if query.limit == 0 || query.limit > MAX_LIMIT {
         return Err(ApiError::BadRequest(format!(
@@ -338,12 +417,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_users_returns_200() {
-        let app = HttpDashboardServer::new(create_test_dashboard()).router();
+        let app = test_server(create_test_dashboard()).router();
 
         let response = app
             .oneshot(
                 Request::builder()
                     .uri("/users")
+                    .header("authorization", admin_header())
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -355,7 +435,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_returns_200() {
-        let app = HttpDashboardServer::new(create_test_dashboard()).router();
+        let app = test_server(create_test_dashboard()).router();
 
         let start = OffsetDateTime::from_unix_timestamp(100).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(200).unwrap();
@@ -370,7 +450,13 @@ mod tests {
         );
 
         let response = app
-            .oneshot(Request::builder().uri(&uri).body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(&uri)
+                    .header("authorization", admin_header())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -379,7 +465,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_rejects_invalid_range() {
-        let app = HttpDashboardServer::new(create_test_dashboard()).router();
+        let app = test_server(create_test_dashboard()).router();
 
         let start = OffsetDateTime::from_unix_timestamp(200).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(100).unwrap();
@@ -394,7 +480,13 @@ mod tests {
         );
 
         let response = app
-            .oneshot(Request::builder().uri(&uri).body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(&uri)
+                    .header("authorization", admin_header())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -403,7 +495,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_rejects_zero_limit() {
-        let app = HttpDashboardServer::new(create_test_dashboard()).router();
+        let app = test_server(create_test_dashboard()).router();
 
         let start = OffsetDateTime::from_unix_timestamp(100).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(200).unwrap();
@@ -418,7 +510,13 @@ mod tests {
         );
 
         let response = app
-            .oneshot(Request::builder().uri(&uri).body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(&uri)
+                    .header("authorization", admin_header())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -427,7 +525,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_rejects_limit_too_large() {
-        let app = HttpDashboardServer::new(create_test_dashboard()).router();
+        let app = test_server(create_test_dashboard()).router();
 
         let start = OffsetDateTime::from_unix_timestamp(100).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(200).unwrap();
@@ -442,7 +540,13 @@ mod tests {
         );
 
         let response = app
-            .oneshot(Request::builder().uri(&uri).body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(&uri)
+                    .header("authorization", admin_header())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 

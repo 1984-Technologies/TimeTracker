@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/model", "crates/proto", "crates/client", "crates/backend"]
+exclude = ["fuzz"]
 resolver = "3"
 
 [workspace.package]

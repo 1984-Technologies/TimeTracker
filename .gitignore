@@ -3,6 +3,9 @@
 # Rust
 target/
 crates/client/generated/
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/coverage/
 
 !.github/
 !.github/**

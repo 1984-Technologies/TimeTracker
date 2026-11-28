@@ -3,13 +3,21 @@ name = "timetracker-backend"
 version.workspace = true
 edition.workspace = true
 
+[features]
+# Exposes parsing entry points to the separate fuzz workspace; no checks are disabled.
+fuzzing = []
+
 [dependencies]
 async-trait.workspace = true
+argon2 = "0.5.3"
 axum.workspace = true
+base64 = "0.22"
+jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_crypto"] }
+sha2 = "0.10"
+subtle = "2.6"
 serde.workspace = true
 serde_json.workspace = true
 sqlx = { workspace = true, features = ["postgres", "json"] }
-argon2 = { version = "0.5", features = ["std"] }
 timetracker-model = { path = "../model" }
 timetracker-proto = { path = "../proto" }
 
@@ -25,4 +33,6 @@ tracing-subscriber.workspace = true
 tonic-build = { version = "0.12.3", features = ["prost"] }
 
 [dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tokio-stream = { version = "0.1", features = ["net"] }
 tower = { version = "0.5", features = ["util"] }
