@@ -38,7 +38,7 @@ jobs:
       - name: Install Client Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libinput-dev libudev-dev
+          sudo apt-get install -y pkg-config libinput-dev libudev-dev libwebkit2gtk-4.1-dev libxdo-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -103,7 +103,7 @@ jobs:
       - name: Install Client Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libinput-dev libudev-dev
+          sudo apt-get install -y pkg-config libinput-dev libudev-dev libwebkit2gtk-4.1-dev libxdo-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -114,12 +114,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build client binary
-        run: cargo build --release --target x86_64-unknown-linux-gnu
+        run: cargo build -p timetracker-client --features desktop-ui --release --target x86_64-unknown-linux-gnu
 
       - name: Prepare binary artifact
         run: |
           mkdir -p artifacts
-          cp target/x86_64-unknown-linux-gnu/release/client artifacts/client-linux-amd64
+          cp target/x86_64-unknown-linux-gnu/release/timetracker-client artifacts/client-linux-amd64
           chmod +x artifacts/client-linux-amd64
 
       - name: Create GitHub Release
