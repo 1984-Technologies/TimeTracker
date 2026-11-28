@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TimeTracker registration</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><span class="brand">TimeTracker</span><span class="desktop">Desktop client</span></header>
+    <h1>Connect this device</h1>
+    <p id="intro">Ask your administrator to scan this code or open the registration link and approve your device.</p>
+    <div id="status" role="status" aria-live="polite" aria-atomic="true">Checking registration…</div>
+    <section id="enrollment" aria-label="Device registration">
+      <div id="qr" role="img" aria-label="QR code for the device registration link"></div>
+      <label for="device">Device ID</label><output id="device"></output>
+      <div class="actions"><button id="open" disabled>Open link</button><button id="copy" class="secondary" disabled>Copy link</button></div>
+      <label for="link">Registration link</label><textarea id="link" rows="3" readonly spellcheck="false"></textarea>
+    </section>
+    <button id="retry" class="secondary" disabled>Check again</button>
+    <p id="feedback" role="alert"></p>
+    <footer id="privacy">Collection starts only after your administrator approves this device and authentication succeeds. Closing this window hides it to the system tray.</footer>
+  </main>
+</body>
+</html>
