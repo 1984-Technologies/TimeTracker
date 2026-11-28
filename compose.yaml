@@ -24,6 +24,10 @@ services:
     environment:
       SERVER_PORT: ${SERVER_PORT:-8080}
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-app_db}
+      INITIAL_ADMIN_USERNAME: ${INITIAL_ADMIN_USERNAME:-admin}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-change-me-local-only}
+      HTTP_BIND_ADDR: 0.0.0.0:8080
+      GRPC_BIND_ADDR: 0.0.0.0:50051
     ports:
       - "${BACKEND_PORT:-8080}:${SERVER_PORT:-8080}"
     depends_on:

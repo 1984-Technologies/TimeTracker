@@ -133,10 +133,10 @@ impl DesktopAdapter for FocusedApplicationAdapter {
         }
 
         let mut active_app_id = self.initial_app_id.take();
-        if let Some(app_id) = active_app_id.clone() {
-            if !self.publish_application(app_id, &output).await {
-                return Ok(());
-            }
+        if let Some(app_id) = active_app_id.clone()
+            && !self.publish_application(app_id, &output).await
+        {
+            return Ok(());
         }
 
         let mut ticker = tokio::time::interval(WINDOW_POLL_INTERVAL);
@@ -161,10 +161,10 @@ impl DesktopAdapter for FocusedApplicationAdapter {
                     }
                 }
                 _ = ticker.tick() => {
-                    if let Some(app_id) = active_app_id.clone() {
-                        if !self.publish_application(app_id, &output).await {
-                            return Ok(());
-                        }
+                    if let Some(app_id) = active_app_id.clone()
+                        && !self.publish_application(app_id, &output).await
+                    {
+                        return Ok(());
                     }
                 }
             }

@@ -4,6 +4,11 @@ use tokio::sync::{mpsc, watch};
 
 use crate::ClientError;
 
+mod activity_window;
+mod mouse_keyboard_activity;
+
+pub use mouse_keyboard_activity::{DEFAULT_ACTIVITY_WINDOW_DURATION, MouseKeyboardActivityAdapter};
+
 #[cfg(target_os = "linux")]
 pub mod hyprland;
 

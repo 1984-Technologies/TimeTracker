@@ -169,15 +169,17 @@ impl DesktopAdapter for IdleAdapter {
                                         return Ok(());
                                     }
                                 }
-                                powerwatch::PowerEvent::Resume => {
+                                powerwatch::PowerEvent::Resume
                                     if !send_observation(
                                         &output,
                                         OffsetDateTime::now_utc(),
                                         ObservationKind::SystemSleepChanged { sleeping: false },
-                                    ).await {
-                                        return Ok(());
-                                    }
+                                    )
+                                    .await =>
+                                {
+                                    return Ok(());
                                 }
+                                powerwatch::PowerEvent::Resume => {}
                                 _ => {}
                             }
                         }
