@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "TimeTracker",
+  "version": "0.1.0",
+  "identifier": "tech.1984.timetracker",
+  "build": { "frontendDist": "ui" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [{
+      "label": "main", "title": "TimeTracker", "width": 480, "height": 840,
+      "minWidth": 360, "minHeight": 640
+    }],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": { "active": false }
+}

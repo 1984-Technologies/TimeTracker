@@ -83,9 +83,22 @@ impl ClientEventService {
             .await
     }
 
-    pub async fn upload_loop(
+    pub async fn upload_loop(&self, shutdown: watch::Receiver<bool>) -> Result<(), ClientError> {
+        self.upload_loop_with_auth(shutdown, None).await
+    }
+
+    pub async fn upload_loop_authenticated(
+        &self,
+        shutdown: watch::Receiver<bool>,
+        auth: &crate::registration::ClientAuthService,
+    ) -> Result<(), ClientError> {
+        self.upload_loop_with_auth(shutdown, Some(auth)).await
+    }
+
+    async fn upload_loop_with_auth(
         &self,
         mut shutdown: watch::Receiver<bool>,
+        auth: Option<&crate::registration::ClientAuthService>,
     ) -> Result<(), ClientError> {
         let mut shutting_down = false;
 
@@ -117,7 +130,11 @@ impl ClientEventService {
 
             // Once a request starts, let its timeout determine when it ends. Dropping the
             // request on shutdown can lose this in-memory batch before the server accepts it.
-            match self.upload_client.send(self.device_id, &events).await {
+            let result = match auth {
+                Some(auth) => self.upload_client.send_authenticated(auth, &events).await,
+                None => self.upload_client.send(self.device_id, &events).await,
+            };
+            match result {
                 Ok(event_ids) => self.queue.acknowledge(&event_ids).await?,
                 Err(error) => {
                     eprintln!("Failed to upload events: {error}");
