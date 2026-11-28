@@ -12,6 +12,9 @@ pub use mouse_keyboard_activity::{DEFAULT_ACTIVITY_WINDOW_DURATION, MouseKeyboar
 #[cfg(target_os = "linux")]
 pub mod hyprland;
 
+#[cfg(target_os = "linux")]
+pub mod kde;
+
 pub enum AdapterOutput {
     Observation(Observation),
     Status {
@@ -46,8 +49,16 @@ pub use macos::{MacOsAdapterRuntime, MacOsRuntimeShutdownHandle, default_adapter
 pub fn default_adapters() -> Result<Vec<Box<dyn DesktopAdapter>>, crate::ClientError> {
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").ok();
     let signature = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok();
+    let session_type = std::env::var("XDG_SESSION_TYPE").ok();
+    let wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
     if is_hyprland_session(desktop.as_deref(), signature.as_deref()) {
         Ok(hyprland::default_hyprland_adapters())
+    } else if is_kde_wayland_session(
+        desktop.as_deref(),
+        session_type.as_deref(),
+        wayland_display.as_deref(),
+    ) {
+        Ok(kde::default_kde_adapters())
     } else {
         Ok(Vec::new())
     }
@@ -62,6 +73,26 @@ fn is_hyprland_session(desktop: Option<&str>, signature: Option<&str>) -> bool {
             .split(':')
             .any(|name| name.trim().eq_ignore_ascii_case("Hyprland")),
         None => signature.is_some_and(|signature| !signature.trim().is_empty()),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn is_kde_wayland_session(
+    desktop: Option<&str>,
+    session_type: Option<&str>,
+    wayland_display: Option<&str>,
+) -> bool {
+    let is_kde = desktop.is_some_and(|desktop| {
+        desktop
+            .split(':')
+            .any(|name| name.trim().eq_ignore_ascii_case("KDE"))
+    });
+    if !is_kde {
+        return false;
+    }
+    match session_type.filter(|session| !session.trim().is_empty()) {
+        Some(session) => session.trim().eq_ignore_ascii_case("wayland"),
+        None => wayland_display.is_some_and(|wayland_display| !wayland_display.is_empty()),
     }
 }
 
