@@ -24,12 +24,15 @@ services:
     environment:
       SERVER_PORT: ${SERVER_PORT:-8080}
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-app_db}
-      INITIAL_ADMIN_USERNAME: ${INITIAL_ADMIN_USERNAME:-admin}
-      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-change-me-local-only}
-      HTTP_BIND_ADDR: 0.0.0.0:8080
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      DASHBOARD_ORIGIN: ${DASHBOARD_ORIGIN:-http://localhost:5173}
+      INITIAL_ADMIN_USERNAME: ${INITIAL_ADMIN_USERNAME:-}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+      HTTP_BIND_ADDR: 0.0.0.0:${SERVER_PORT:-8080}
       GRPC_BIND_ADDR: 0.0.0.0:50051
     ports:
       - "${BACKEND_PORT:-8080}:${SERVER_PORT:-8080}"
+      - "${GRPC_PORT:-50051}:50051"
     depends_on:
       db:
         condition: service_healthy

@@ -3,8 +3,12 @@ use std::{future::Future, io, sync::Arc};
 use tokio::{signal, sync::mpsc, sync::watch, task::JoinError};
 
 use timetracker_client::{
-    ClientError, adapters::DesktopAdapter, event_service::ClientEventService,
-    identity::InstallationIdentity, queue::EventQueue, supervisor::CollectionSupervisor,
+    ClientError,
+    adapters::DesktopAdapter,
+    event_service::ClientEventService,
+    queue::EventQueue,
+    registration::{ClientAuthService, DeviceCredentialStore, HttpAuthClient},
+    supervisor::CollectionSupervisor,
     upload::GrpcUploadClient,
 };
 
@@ -90,10 +94,26 @@ where
     Shutdown: Future<Output = Result<(), ClientError>> + Send,
     OnStopping: FnOnce(),
 {
-    let device_id = InstallationIdentity.load_or_create()?;
+    let credentials = DeviceCredentialStore.load_or_create()?;
+    let device_id = credentials.device_id;
+    let auth = Arc::new(ClientAuthService::new(
+        HttpAuthClient::from_env(),
+        credentials,
+    ));
+    eprintln!(
+        "Client device_id={} credential_hash={}",
+        device_id.0,
+        auth.credential_hash()?
+    );
+
     let queue = Arc::new(EventQueue::new());
     let upload_client = GrpcUploadClient::new(grpc_server_uri())?;
-    let event_service = Arc::new(ClientEventService::new(device_id, queue, upload_client));
+    let event_service = Arc::new(ClientEventService::with_auth(
+        device_id,
+        queue,
+        upload_client,
+        auth,
+    ));
 
     run_client_services(adapters, event_service, shutdown_signal, on_stopping).await
 }

@@ -1,0 +1,39 @@
+name: Auth fuzz smoke tests
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  auth-fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FUZZ_TOOLCHAIN: nightly-2026-11-26
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-protoc
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install nightly toolchain
+        run: rustup toolchain install "$FUZZ_TOOLCHAIN" --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "fuzz -> target"
+          key: auth-fuzz-nightly-2026-11-26
+      - name: Replay saved inputs on stable Rust
+        run: cargo test --manifest-path fuzz/Cargo.toml --lib --no-default-features --locked
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Fuzz each authentication target with AddressSanitizer
+        run: bash fuzz/run.sh
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: auth-fuzz-failure
+          path: |
+            fuzz/artifacts
+            fuzz/corpus
+          if-no-files-found: ignore

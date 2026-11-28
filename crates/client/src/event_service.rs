@@ -5,12 +5,16 @@ use timetracker_model::{DeviceId, Event, EventId, EventKind};
 use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
 
-use crate::{ClientError, adapters::AdapterOutput, queue::EventQueue, upload::GrpcUploadClient};
+use crate::{
+    ClientError, adapters::AdapterOutput, queue::EventQueue, registration::ClientAuthService,
+    upload::GrpcUploadClient,
+};
 
 pub struct ClientEventService {
     pub(crate) device_id: DeviceId,
     pub(crate) queue: Arc<EventQueue>,
     pub(crate) upload_client: GrpcUploadClient,
+    pub(crate) auth: Option<Arc<ClientAuthService>>,
 }
 
 impl ClientEventService {
@@ -27,6 +31,21 @@ impl ClientEventService {
             device_id,
             queue,
             upload_client,
+            auth: None,
+        }
+    }
+
+    pub fn with_auth(
+        device_id: DeviceId,
+        queue: Arc<EventQueue>,
+        upload_client: GrpcUploadClient,
+        auth: Arc<ClientAuthService>,
+    ) -> Self {
+        Self {
+            device_id,
+            queue,
+            upload_client,
+            auth: Some(auth),
         }
     }
 
@@ -117,7 +136,12 @@ impl ClientEventService {
 
             // Once a request starts, let its timeout determine when it ends. Dropping the
             // request on shutdown can lose this in-memory batch before the server accepts it.
-            match self.upload_client.send(self.device_id, &events).await {
+            let send_result = match &self.auth {
+                Some(auth) => self.upload_client.send_authenticated(auth, &events).await,
+                None => self.upload_client.send(self.device_id, &events).await,
+            };
+
+            match send_result {
                 Ok(event_ids) => self.queue.acknowledge(&event_ids).await?,
                 Err(error) => {
                     eprintln!("Failed to upload events: {error}");
