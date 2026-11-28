@@ -29,3 +29,29 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/timetracker
 GRPC_BIND_ADDR=0.0.0.0:50051
 HTTP_BIND_ADDR=0.0.0.0:8080
 ```
+
+
+## Local authentication demo
+
+Create database and start backend with
+```sh
+export JWT_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+docker compose up -d db
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/app_db \
+INITIAL_ADMIN_USERNAME=admin INITIAL_ADMIN_PASSWORD=change-me-local-only \
+JWT_SECRET="$JWT_SECRET" DASHBOARD_ORIGIN=http://localhost:5173 \
+HTTP_BIND_ADDR=127.0.0.1:8239 GRPC_BIND_ADDR=127.0.0.1:50051 \
+cargo run -p timetracker-backend
+```
+
+Run frontend with
+```sh
+npm --prefix frontend ci
+npm --prefix frontend run dev:real
+```
+Dashboard can be accessed at `http://localhost:5173`
+
+Run client:
+```sh
+cargo run -p timetracker-client --features desktop-ui
+```

@@ -2847,6 +2847,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonwebtoken"
+version = "9.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a87cc7a48537badeae96744432de36f4be2b4a34a05a5ef32e9dd8a1c169dde"
+dependencies = [
+ "base64 0.22.1",
+ "js-sys",
+ "ring",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "kdotool"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6008,19 +6021,26 @@ dependencies = [
  "argon2",
  "async-trait",
  "axum 0.8.9",
+ "base64 0.22.1",
+ "jsonwebtoken",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
+ "subtle",
  "time",
+ "timetracker-client",
  "timetracker-model",
  "timetracker-proto",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tonic-build",
  "tower 0.5.3",
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 
@@ -6059,6 +6079,7 @@ dependencies = [
  "uuid",
  "wayland-client",
  "wayland-protocols",
+ "zbus",
 ]
 
 [[package]]
@@ -6117,6 +6138,7 @@ dependencies = [
  "signal-hook-registry",
  "socket2 0.6.5",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -7649,6 +7671,7 @@ dependencies = [
  "rustix 1.1.5",
  "serde",
  "serde_repr",
+ "tokio",
  "tracing",
  "uds_windows",
  "uuid",

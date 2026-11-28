@@ -5,7 +5,8 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderValue, Method, StatusCode, header},
+    middleware,
     response::IntoResponse,
     routing::get,
 };
@@ -14,7 +15,7 @@ use time::OffsetDateTime;
 use timetracker_model::UserId;
 use tokio::sync::watch;
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::{AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
 
@@ -26,27 +27,82 @@ use crate::{
 
 pub struct HttpDashboardServer {
     pub(crate) dashboard: Arc<DashboardService>,
+    auth: Option<Arc<crate::auth::AuthService>>,
 }
 
 impl HttpDashboardServer {
     pub fn new(dashboard: Arc<DashboardService>) -> Self {
-        Self { dashboard }
+        Self {
+            dashboard,
+            auth: None,
+        }
     }
-
-    pub fn router(&self) -> Router {
+    pub fn with_auth(mut self, auth: Arc<crate::auth::AuthService>) -> Self {
+        self.auth = Some(auth);
+        self
+    }
+    fn private_router(&self) -> Router {
         Router::new()
-            .route("/health", get(health_check))
             .route("/users", get(list_users))
             .route("/users/{id}/actions", get(user_actions))
-            .layer(TraceLayer::new_for_http())
-            .layer(
-                CorsLayer::new()
-                    .allow_origin(Any)
-                    .allow_methods(Any)
-                    .allow_headers(Any),
-            )
-            .with_state(Arc::clone(&self.dashboard))
+            .with_state(self.dashboard.clone())
     }
+    pub fn router(&self) -> Router {
+        let reads = self.private_router();
+        let reads = match &self.auth {
+            Some(auth) => reads.route_layer(middleware::from_fn_with_state(
+                auth.clone(),
+                super::auth::authenticate_http,
+            )),
+            None => reads.route_layer(middleware::from_fn(
+                |_request: axum::extract::Request, _next: middleware::Next| async {
+                    ApiError::Unauthorized.into_response()
+                },
+            )),
+        };
+        let mut app = Router::new()
+            .route("/health", get(health_check))
+            .merge(reads);
+        if let Some(auth) = &self.auth {
+            app = app.merge(
+                super::auth::HttpAuthApi::new(auth.clone(), self.dashboard._users.clone()).router(),
+            );
+        }
+        let cors = dashboard_origin()
+            .map(|origin| {
+                CorsLayer::new()
+                    .allow_origin(AllowOrigin::list([origin]))
+                    .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::OPTIONS])
+                    .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
+            })
+            .unwrap_or_else(|_| CorsLayer::new());
+        app.layer(TraceLayer::new_for_http()).layer(cors)
+    }
+}
+
+pub fn dashboard_origin() -> Result<HeaderValue, BackendError> {
+    let invalid = || {
+        BackendError::Validation(
+            "DASHBOARD_ORIGIN must be one HTTP(S) origin, for example http://localhost:5173".into(),
+        )
+    };
+    let value =
+        std::env::var("DASHBOARD_ORIGIN").unwrap_or_else(|_| "http://localhost:5173".into());
+    let url = url::Url::parse(value.trim()).map_err(|_| invalid())?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(invalid());
+    }
+    url.origin()
+        .ascii_serialization()
+        .parse()
+        .map_err(|_| invalid())
 }
 
 async fn health_check() -> StatusCode {
@@ -231,9 +287,12 @@ impl ApiServer for HttpDashboardServer {
 
         let listener = tokio::net::TcpListener::bind(address).await?;
 
-        axum::serve(listener, app)
-            .with_graceful_shutdown(wait_for_shutdown(shutdown))
-            .await?;
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(wait_for_shutdown(shutdown))
+        .await?;
 
         Ok(())
     }
@@ -338,7 +397,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_users_returns_200() {
-        let app = HttpDashboardServer::new(create_test_dashboard()).router();
+        let app = HttpDashboardServer::new(create_test_dashboard()).private_router();
 
         let response = app
             .oneshot(
@@ -355,7 +414,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_returns_200() {
-        let app = HttpDashboardServer::new(create_test_dashboard()).router();
+        let app = HttpDashboardServer::new(create_test_dashboard()).private_router();
 
         let start = OffsetDateTime::from_unix_timestamp(100).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(200).unwrap();
@@ -379,7 +438,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_rejects_invalid_range() {
-        let app = HttpDashboardServer::new(create_test_dashboard()).router();
+        let app = HttpDashboardServer::new(create_test_dashboard()).private_router();
 
         let start = OffsetDateTime::from_unix_timestamp(200).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(100).unwrap();
@@ -403,7 +462,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_rejects_zero_limit() {
-        let app = HttpDashboardServer::new(create_test_dashboard()).router();
+        let app = HttpDashboardServer::new(create_test_dashboard()).private_router();
 
         let start = OffsetDateTime::from_unix_timestamp(100).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(200).unwrap();
@@ -427,7 +486,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_actions_rejects_limit_too_large() {
-        let app = HttpDashboardServer::new(create_test_dashboard()).router();
+        let app = HttpDashboardServer::new(create_test_dashboard()).private_router();
 
         let start = OffsetDateTime::from_unix_timestamp(100).unwrap();
         let end = OffsetDateTime::from_unix_timestamp(200).unwrap();

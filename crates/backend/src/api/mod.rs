@@ -12,7 +12,7 @@ mod http;
 
 pub use error::ApiError;
 pub use grpc::GrpcMetricsServer;
-pub use http::HttpDashboardServer;
+pub use http::{HttpDashboardServer, dashboard_origin};
 
 #[async_trait]
 pub trait ApiServer: Send + Sync {

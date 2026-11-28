@@ -5,11 +5,11 @@ use std::sync::Arc;
 use tokio::sync::watch;
 use tracing::{error, info};
 
-use timetracker_backend::auth::hash_password;
+use timetracker_backend::auth::{AuthService, hash_password, jwt_key};
 use timetracker_backend::repositories::{AdminAccountRepository, PostgresAdminAccountRepository};
 use timetracker_backend::{
     BackendError,
-    api::{ApiServer, GrpcMetricsServer, HttpDashboardServer},
+    api::{ApiServer, GrpcMetricsServer, HttpDashboardServer, dashboard_origin},
     collection::MetricsCollectionService,
     dashboard::DashboardService,
     repositories::{
@@ -72,6 +72,10 @@ async fn main() -> Result<(), BackendError> {
         .init();
     info!("Starting TimeTracker backend service...");
 
+    let jwt_secret = read_env_var("JWT_SECRET")?;
+    jwt_key(&jwt_secret)?;
+    let origin = dashboard_origin()?;
+    info!(dashboard_origin = ?origin, "Configured dashboard CORS origin");
     let database_url = read_env_var("DATABASE_URL")?;
     let initial_admin_username = read_env_var("INITIAL_ADMIN_USERNAME")?;
     let initial_admin_password = read_env_var("INITIAL_ADMIN_PASSWORD")?;
@@ -111,6 +115,12 @@ async fn main() -> Result<(), BackendError> {
     let user_action_repository: Arc<dyn UserActionRepository> =
         Arc::new(PostgresUserActionRepository::new(db_pool));
 
+    let auth = Arc::new(AuthService::new(
+        Arc::new(admin_repository),
+        device_repository.clone(),
+        jwt_secret,
+    ));
+
     let collection_service = Arc::new(MetricsCollectionService::new(
         device_repository,
         event_repository,
@@ -120,8 +130,8 @@ async fn main() -> Result<(), BackendError> {
         user_action_repository,
     ));
 
-    let grpc_server = GrpcMetricsServer::new(collection_service);
-    let http_server = HttpDashboardServer::new(dashboard_service);
+    let grpc_server = GrpcMetricsServer::new(collection_service).with_auth(auth.clone());
+    let http_server = HttpDashboardServer::new(dashboard_service).with_auth(auth);
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 

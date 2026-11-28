@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+base64 = "0.22"
+jsonwebtoken = { version = "9", default-features = false }
+sha2 = "0.10"
+subtle = "2"
+url = "2"
 async-trait.workspace = true
 axum.workspace = true
 serde.workspace = true
@@ -25,4 +30,6 @@ tracing-subscriber.workspace = true
 tonic-build = { version = "0.12.3", features = ["prost"] }
 
 [dev-dependencies]
+timetracker-client = { path = "../client" }
+tokio-stream = { version = "0.1", features = ["net"] }
 tower = { version = "0.5", features = ["util"] }
