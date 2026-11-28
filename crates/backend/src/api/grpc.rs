@@ -77,11 +77,7 @@ fn convert_proto_event(
             EventKind::Observation(ObservationKind::IdleChanged { idle })
         }
         event_message::Kind::FocusedApplicationChanged(app) => {
-            if app.app_id.trim().is_empty() {
-                return Err(Status::invalid_argument(
-                    "FocusedApplicationChanged.app_id cannot be empty",
-                ));
-            }
+            // An empty app ID represents no focused window.
             EventKind::Observation(ObservationKind::FocusedApplicationChanged {
                 app_id: app.app_id,
                 title: app.title,
@@ -363,6 +359,42 @@ mod tests {
 
         let response = server.upload_events(req).await.unwrap().into_inner();
         assert_eq!(response.accepted_event_ids, vec![event_uuid.to_string()]);
+    }
+
+    #[tokio::test]
+    async fn upload_events_accepts_no_focused_window() {
+        let device_uuid = Uuid::new_v4();
+        let event_uuid = Uuid::new_v4();
+        let heartbeat_uuid = Uuid::new_v4();
+        let server = setup_grpc_server(Some(DeviceId(device_uuid)));
+        let mut event = valid_proto_event(event_uuid, device_uuid);
+        event.kind = Some(event_message::Kind::FocusedApplicationChanged(
+            proto::FocusedApplicationChangedMessage {
+                app_id: String::new(),
+                title: None,
+            },
+        ));
+
+        let converted = convert_proto_event(event.clone(), DeviceId(device_uuid)).unwrap();
+        assert_eq!(
+            converted.kind,
+            EventKind::Observation(ObservationKind::FocusedApplicationChanged {
+                app_id: String::new(),
+                title: None,
+            })
+        );
+        let response = server
+            .upload_events(Request::new(UploadEventsRequest {
+                device_id: device_uuid.to_string(),
+                events: vec![event, valid_proto_event(heartbeat_uuid, device_uuid)],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(
+            response.accepted_event_ids,
+            vec![event_uuid.to_string(), heartbeat_uuid.to_string()]
+        );
     }
 
     #[tokio::test]
