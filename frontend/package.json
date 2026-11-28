@@ -11,7 +11,8 @@
     "build": "tsc -b && vite build",
     "test": "tsx --test tests/analytics.test.ts",
     "typecheck": "tsc -b --pretty false",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:auth": "node --import tsx --test tests/auth.test.ts tests/mock.test.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.2",

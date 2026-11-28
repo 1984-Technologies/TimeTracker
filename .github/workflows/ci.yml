@@ -83,6 +83,10 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
+      - name: Frontend Authentication Tests
+        working-directory: frontend
+        run: npm run test:auth
+
       - name: Test
         working-directory: frontend
         run: npm test
