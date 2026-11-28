@@ -7,6 +7,10 @@ use uuid::Uuid;
 #[path = "postgres/auth.rs"]
 mod auth;
 
+fn sample_hash(hex_char: char) -> String {
+    std::iter::repeat_n(hex_char, 64).collect()
+}
+
 #[tokio::test]
 #[ignore = "requires an isolated TEST_DATABASE_URL"]
 async fn postgres_persists_idempotently_and_rolls_back_conflicting_batches() {
@@ -24,9 +28,10 @@ async fn postgres_persists_idempotently_and_rolls_back_conflicting_batches() {
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO devices (id, user_id) VALUES ($1, $2)")
+    sqlx::query("INSERT INTO devices (id, user_id, credential_hash) VALUES ($1, $2, $3)")
         .bind(device.0)
         .bind(user.0)
+        .bind(sample_hash('a'))
         .execute(&pool)
         .await
         .unwrap();
@@ -116,9 +121,10 @@ async fn postgres_persists_idempotently_and_rolls_back_conflicting_batches() {
         "Integration Test"
     );
     let other_device = DeviceId(Uuid::new_v4());
-    sqlx::query("INSERT INTO devices (id, user_id) VALUES ($1, $2)")
+    sqlx::query("INSERT INTO devices (id, user_id, credential_hash) VALUES ($1, $2, $3)")
         .bind(other_device.0)
         .bind(user.0)
+        .bind(sample_hash('b'))
         .execute(&pool)
         .await
         .unwrap();
