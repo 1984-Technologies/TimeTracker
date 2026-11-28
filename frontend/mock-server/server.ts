@@ -1,3 +1,4 @@
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type {
   AdapterStatus,
@@ -177,8 +178,8 @@ const actionsByUser: Record<string, UserAction[]> = {
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, {
-    "Access-Control-Allow-Headers": "Content-Type, Accept",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
     "Access-Control-Allow-Origin": "*",
     "Content-Type": "application/json; charset=utf-8",
   });
@@ -206,42 +207,120 @@ function handleActions(
     return;
   }
 
-  const actions = (actionsByUser[userId] ?? [])
-    .filter((item) => {
-      const timestamp = Date.parse(item.occurred_at);
-      return timestamp >= start && timestamp <= end;
-    })
-    .sort((left, right) => Date.parse(right.occurred_at) - Date.parse(left.occurred_at));
-
-  sendJson(response, 200, actions);
+  const all = [...(actionsByUser[userId] ?? [])].sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at));
+  const actions = [...all.filter((item) => Date.parse(item.occurred_at) < start).slice(-100), ...all.filter((item) => Date.parse(item.occurred_at) >= start && Date.parse(item.occurred_at) <= end)];
+  // Main's activity loader still expects an array until PR #47 lands.
+  if (!url.searchParams.has("limit") && !url.searchParams.has("offset")) {
+    sendJson(response, 200, actions); return;
+  }
+  const limit = Number(url.searchParams.get("limit") ?? 100), offset = Number(url.searchParams.get("offset") ?? 0);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000 || !Number.isSafeInteger(offset) || offset < 0) { sendJson(response, 400, { code: "bad_request", message: "Invalid pagination" }); return; }
+  sendJson(response, 200, { items: actions.slice(offset, offset + limit), total: actions.length, limit, offset });
 }
 
-const server = createServer((request, response) => {
-  if (request.method === "OPTIONS") {
-    sendJson(response, 204, null);
+// Development-only accounts; production credentials are never loaded here.
+const admins = [{ id: randomUUID(), username: "admin", password: "change-me-local-only" }];
+const devices = new Map<string, { device_id: string; user_id: string; credential_hash: string }>();
+const key = randomBytes(32);
+const ttl = Number(process.env.MOCK_TOKEN_TTL_SECONDS ?? 900);
+function fail(status: number, message: string): never { throw Object.assign(new Error(message), { status }); }
+function issue(sub: string, kind: "admin" | "device") {
+  const iat = Math.floor(Date.now() / 1000);
+  const head = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const body = Buffer.from(JSON.stringify({ sub, kind, iat, exp: iat + ttl, iss: "timetracker", aud: "timetracker-api" })).toString("base64url");
+  const message = `${head}.${body}`;
+  return { access_token: `${message}.${createHmac("sha256", key).update(message).digest("base64url")}`, token_type: "Bearer", expires_in: ttl };
+}
+function authenticate(request: IncomingMessage) {
+  const [head, body, signature] = (request.headers.authorization?.replace(/^Bearer /, "") ?? "").split(".");
+  const expected = createHmac("sha256", key).update(`${head}.${body}`).digest("base64url");
+  if (!signature || signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) fail(401, "Invalid credentials or token");
+  const claims = JSON.parse(Buffer.from(body, "base64url").toString()) as { sub: string; kind: string; exp: number };
+  if (claims.exp <= Date.now() / 1000) fail(401, "Token expired");
+  if (claims.kind !== "admin") fail(403, "Administrator token required");
+  const admin = admins.find((admin) => admin.id === claims.sub);
+  if (!admin) fail(401, "Unknown administrator");
+  return admin;
+}
+async function readBody(request: IncomingMessage): Promise<Record<string, string>> {
+  let text = "";
+  for await (const chunk of request) { text += String(chunk); if (text.length > 16384) fail(400, "Request too large"); }
+  try { const value: unknown = JSON.parse(text); if (!value || typeof value !== "object" || Array.isArray(value)) fail(400, "Invalid JSON"); return value as Record<string, string>; }
+  catch { fail(400, "Invalid JSON request"); }
+}
+function name(value: unknown) { if (typeof value !== "string" || !value.trim() || value.length > 200) fail(400, "Name is required"); return value.trim(); }
+function password(value: unknown) { if (typeof value !== "string" || !value || value.length > 1024) fail(400, "Password is required"); return value; }
+function deviceCheck(data: Record<string, string>) {
+  if (typeof data.secret !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(data.secret)) fail(400, "Invalid device secret");
+  const raw = Buffer.from(data.secret, "base64url");
+  if (raw.length !== 32 || raw.toString("base64url") !== data.secret) fail(400, "Invalid device secret");
+  const device = devices.get(data.device_id), hash = createHash("sha256").update(raw).digest("hex");
+  if (device && !timingSafeEqual(Buffer.from(hash), Buffer.from(device.credential_hash))) fail(401, "Invalid credentials");
+  return device;
+}
+const server = createServer((request, response) => { void (async () => {
+  const send = (status: number, value: unknown) => sendJson(response, status, value);
+  if (request.method === "OPTIONS") { send(204, null); return; }
+  const url = new URL(request.url ?? "/", `http://localhost:${port}`), path = url.pathname, method = request.method;
+  if (path === "/health") { send(200, { ok: true }); return; }
+  if (method === "POST" && path === "/api/auth/login") {
+    const data = await readBody(request), admin = admins.find((admin) => admin.username === data.username && admin.password === data.password);
+    if (!admin) fail(401, "Invalid credentials");
+    send(200, issue(admin.id, "admin")); return;
+  }
+  if (method === "POST" && ["/api/devices/register", "/api/devices/login"].includes(path)) {
+    const data = await readBody(request), device = deviceCheck(data);
+    if (path.endsWith("register")) send(200, { registered: Boolean(device) });
+    else { if (!device) fail(401, "Device is not approved"); send(200, issue(device.device_id, "device")); }
     return;
   }
-
-  if (request.method !== "GET" || !request.url) {
-    sendJson(response, 405, { message: "Method not allowed" });
+  const principal = authenticate(request);
+  if (path === "/api/auth/me" && method === "GET") { send(200, { id: principal.id, username: principal.username }); return; }
+  if (path === "/api/admins") {
+    if (method === "GET") send(200, admins.map(({ id, username }) => ({ id, username })));
+    else if (method === "POST") {
+      const data = await readBody(request), username = name(data.username);
+      if (admins.some((admin) => admin.username === username)) fail(409, "Username already exists");
+      const admin = { id: randomUUID(), username, password: password(data.password) }; admins.push(admin); send(201, { id: admin.id, username });
+    } else fail(405, "Method not allowed");
     return;
   }
-
-  const url = new URL(request.url, `http://${request.headers.host ?? `localhost:${port}`}`);
-  if (url.pathname === "/users") {
-    sendJson(response, 200, users);
+  const adminPath = path.match(/^\/api\/admins\/([^/]+)$/);
+  if (adminPath && method === "PATCH") {
+    const admin = admins.find((admin) => admin.id === adminPath[1]); if (!admin) fail(404, "Admin not found");
+    admin.password = password((await readBody(request)).password); send(204, null); return;
+  }
+  if (path === "/users") {
+    if (method === "GET") send(200, users);
+    else if (method === "POST") { const user = { id: randomUUID(), name: name((await readBody(request)).name) }; users.push(user); send(201, user); }
+    else fail(405, "Method not allowed");
     return;
   }
-
-  const match = url.pathname.match(/^\/users\/([^/]+)\/actions$/);
-  if (match) {
-    handleActions(request, response, url, decodeURIComponent(match[1]));
+  if (path === "/api/devices") {
+    if (method === "GET") send(200, [...devices.values()].map(({ device_id, user_id }) => ({ device_id, user_id })));
+    else if (method === "POST") {
+      const data = await readBody(request);
+      if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.device_id ?? "") || !/^[0-9a-f]{64}$/.test(data.credential_hash ?? "")) fail(400, "Invalid device ID or hash");
+      if (!users.some((user) => user.id === data.user_id)) fail(404, "User not found");
+      const old = devices.get(data.device_id);
+      if (old && (old.user_id !== data.user_id || old.credential_hash !== data.credential_hash)) fail(409, "Device approval conflict");
+      devices.set(data.device_id, { device_id: data.device_id, user_id: data.user_id, credential_hash: data.credential_hash }); send(200, { device_id: data.device_id, user_id: data.user_id });
+    } else fail(405, "Method not allowed");
     return;
   }
-
-  sendJson(response, 404, { message: "Route not found" });
-});
-
+  const devicePath = path.match(/^\/api\/devices\/([^/]+)$/);
+  if (devicePath && method === "GET") {
+    const device = devices.get(devicePath[1]); if (!device) fail(404, "Device not found");
+    send(200, { device_id: device.device_id, user_id: device.user_id }); return;
+  }
+  const actionsPath = path.match(/^\/users\/([^/]+)\/actions$/);
+  if (actionsPath && method === "GET") { handleActions(request, response, url, decodeURIComponent(actionsPath[1])); return; }
+  fail(404, "Route not found");
+})().catch((error: unknown) => {
+  const value = error as { status?: number; message?: string }, status = value.status ?? 500;
+  sendJson(response, status, { code: ({400:"bad_request",401:"unauthorized",403:"forbidden",404:"not_found",409:"conflict"} as Record<number,string>)[status] ?? "internal_error", message: status === 500 ? "Internal server error" : value.message });
+}); });
 server.listen(port, "127.0.0.1", () => {
-  console.log(`TimeTracker mock API listening at http://localhost:${port}`);
+  const address = server.address();
+  console.log(`TimeTracker mock API listening at http://localhost:${typeof address === "object" && address ? address.port : port}`);
 });

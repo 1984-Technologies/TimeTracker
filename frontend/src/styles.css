@@ -41,3 +41,10 @@
     font: inherit;
   }
 }
+
+.auth-input { display: block; width: 100%; margin-top: .4rem; border: 1px solid #cbd5e1; border-radius: .6rem; padding: .65rem .8rem; background: white; color: #172b25; }
+.auth-button, .auth-secondary { border: 1px solid #276749; border-radius: .6rem; padding: .65rem 1rem; background: #276749; color: white; cursor: pointer; }
+.auth-secondary { background: white; color: #276749; }
+.auth-button:disabled, .auth-secondary:disabled { opacity: .5; cursor: default; }
+.auth-input:focus-visible, .auth-button:focus-visible, .auth-secondary:focus-visible { outline: 3px solid #60a5fa; outline-offset: 2px; }
+.auth-panel { border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1.5rem; background: white; }
