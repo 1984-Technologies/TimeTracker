@@ -24,14 +24,27 @@ export interface ActionsQuery {
   end: string;
 }
 
-export function getUserActions(
+interface ActionsPage {
+  items: UserAction[];
+  total: number;
+}
+
+export async function getUserActions(
   userId: string,
   query: ActionsQuery,
   signal?: AbortSignal,
 ): Promise<UserAction[]> {
-  const params = new URLSearchParams({ start: query.start, end: query.end });
-  return request<UserAction[]>(
-    `/users/${encodeURIComponent(userId)}/actions?${params.toString()}`,
-    signal,
-  );
+  const actions: UserAction[] = [];
+  const params = new URLSearchParams({ start: query.start, end: query.end, limit: "1000" });
+  while (true) {
+    params.set("offset", String(actions.length));
+    const page = await request<ActionsPage | UserAction[]>(
+      `/users/${encodeURIComponent(userId)}/actions?${params.toString()}`,
+      signal,
+    );
+    // The mock API returns an unpaginated array.
+    if (Array.isArray(page)) return page;
+    actions.push(...page.items);
+    if (page.items.length === 0 || actions.length >= page.total) return actions;
+  }
 }
