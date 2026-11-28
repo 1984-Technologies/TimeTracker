@@ -1,3 +1,4 @@
+import { clearSession } from "../session";
 import { Clock3 } from "lucide-react";
 import { Link, Outlet } from "react-router-dom";
 
@@ -15,9 +16,10 @@ export function AppShell() {
               <span className="block text-xs text-slate-500">Activity dashboard</span>
             </span>
           </Link>
-          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-            Dashboard
-          </span>
+          <nav className="flex flex-wrap items-center gap-4 text-sm" aria-label="Main navigation">
+            <Link to="/">Activity</Link><Link to="/devices">Devices</Link><Link to="/admins">Administrators</Link>
+            <button onClick={clearSession} className="auth-secondary">Sign out</button>
+          </nav>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-5 py-10 sm:px-8 sm:py-14">
