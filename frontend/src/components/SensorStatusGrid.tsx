@@ -1,6 +1,7 @@
 import {
   Activity,
   AppWindow,
+  Globe,
   Keyboard,
   MousePointer2,
   MousePointerClick,
@@ -16,6 +17,8 @@ const sensorPresentation: Record<ObservationType, { label: string; icon: LucideI
   Keyboard: { label: "Keyboard", icon: Keyboard },
   MouseClick: { label: "Mouse clicks", icon: MousePointerClick },
   MouseMove: { label: "Mouse movement", icon: MousePointer2 },
+  BrowserActivity: { label: "Browser activity", icon: Globe },
+  MouseKeyboardActivity: { label: "Mouse and keyboard activity", icon: Keyboard },
 };
 
 export function SensorStatusGrid({ actions }: { actions: UserAction[] }) {
@@ -38,7 +41,7 @@ export function SensorStatusGrid({ actions }: { actions: UserAction[] }) {
       ) : (
         <div className="flex flex-wrap gap-2 sm:ml-auto">
           {sensors.map((sensor, index) => {
-            const presentation = sensorPresentation[sensor.observationType];
+            const presentation = sensorPresentation[sensor.observationType] ?? { label: sensor.observationType, icon: Activity };
             const Icon = presentation.icon;
             const tooltipId = `sensor-${sensor.observationType}`;
             const tooltipAlignment =

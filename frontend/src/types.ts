@@ -8,7 +8,9 @@ export type ObservationType =
   | "FocusedApplication"
   | "Keyboard"
   | "MouseClick"
-  | "MouseMove";
+  | "MouseMove"
+  | "BrowserActivity"
+  | "MouseKeyboardActivity";
 
 export type AdapterStatus =
   | "Available"
