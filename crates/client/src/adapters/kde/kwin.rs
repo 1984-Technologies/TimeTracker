@@ -77,7 +77,7 @@ impl KWinScriptSession {
             Ok(script_id)
         })
         .await
-        .map_err(|_| -> ClientError { "timed out starting KWin script".into() })?;
+        .unwrap_or_else(|_| Err("timed out starting KWin script".into()));
 
         match load_result {
             Ok(script_id) => Ok(Self {
