@@ -21,6 +21,7 @@ pub enum ObservationType {
     MouseClick,
     MouseMove,
     BrowserActivity,
+    MouseKeyboardActivity,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -69,6 +70,12 @@ pub enum ObservationKind {
         source_id: String,
         window_id: Option<i64>,
         focused: bool,
+    },
+    MouseKeyboardActivitySummary {
+        keypress_count: u64,
+        mouse_click_count: u64,
+        mouse_move_count: u64,
+        window_duration_ms: u64,
     },
 }
 

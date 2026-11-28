@@ -5,6 +5,8 @@ use std::sync::Arc;
 use tokio::sync::watch;
 use tracing::{error, info};
 
+use timetracker_backend::auth::hash_password;
+use timetracker_backend::repositories::{AdminAccountRepository, PostgresAdminAccountRepository};
 use timetracker_backend::{
     BackendError,
     api::{ApiServer, GrpcMetricsServer, HttpDashboardServer},
@@ -71,6 +73,8 @@ async fn main() -> Result<(), BackendError> {
     info!("Starting TimeTracker backend service...");
 
     let database_url = read_env_var("DATABASE_URL")?;
+    let initial_admin_username = read_env_var("INITIAL_ADMIN_USERNAME")?;
+    let initial_admin_password = read_env_var("INITIAL_ADMIN_PASSWORD")?;
     let grpc_bind_addr = read_socket_addr("GRPC_BIND_ADDR")?;
     let http_bind_addr = read_socket_addr("HTTP_BIND_ADDR")?;
     info!("Connecting to PostgreSQL database...");
@@ -91,6 +95,12 @@ async fn main() -> Result<(), BackendError> {
         .map_err(|e| {
             BackendError::Internal(format!("Failed to initialize PostgreSQL schema: {e}"))
         })?;
+
+    let admin_repository = PostgresAdminAccountRepository::new(db_pool.clone());
+    let initial_admin_password_hash = hash_password(&initial_admin_password)?;
+    admin_repository
+        .ensure_initial_account(&initial_admin_username, &initial_admin_password_hash)
+        .await?;
 
     let device_repository: Arc<dyn DeviceRepository> =
         Arc::new(PostgresDeviceRepository::new(db_pool.clone()));

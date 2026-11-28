@@ -7,7 +7,9 @@ use std::{io, os::fd::AsRawFd};
 use timetracker_model::{AdapterStatus, Observation, ObservationKind};
 use tokio::sync::{mpsc, watch};
 
-use super::{AdapterOutput, DesktopAdapter};
+use super::{
+    AdapterOutput, DEFAULT_ACTIVITY_WINDOW_DURATION, DesktopAdapter, MouseKeyboardActivityAdapter,
+};
 use crate::ClientError;
 
 pub use focused_application::FocusedApplicationAdapter;
@@ -18,9 +20,12 @@ pub fn default_hyprland_adapters() -> Vec<Box<dyn DesktopAdapter>> {
     vec![
         Box::new(FocusedApplicationAdapter::new(false)),
         Box::new(IdleAdapter::default()),
-        Box::new(KeyboardAdapter),
-        Box::new(MouseClickAdapter),
-        Box::new(MouseMoveAdapter),
+        Box::new(MouseKeyboardActivityAdapter::new(
+            Box::new(KeyboardAdapter),
+            Box::new(MouseClickAdapter),
+            Box::new(MouseMoveAdapter),
+            DEFAULT_ACTIVITY_WINDOW_DURATION,
+        )),
     ]
 }
 
@@ -131,16 +136,14 @@ mod tests {
     async fn adapters_cover_all_types_and_skip_setup_on_shutdown() {
         let mut ids = std::collections::HashSet::new();
         let adapters = default_hyprland_adapters();
-        assert_eq!(adapters.len(), 5);
+        assert_eq!(adapters.len(), 3);
         let types: Vec<_> = adapters
             .iter()
             .map(|adapter| adapter.observation_type())
             .collect();
         use timetracker_model::ObservationType::*;
-        assert_eq!(
-            types,
-            [FocusedApplication, Idle, Keyboard, MouseClick, MouseMove]
-        );
+
+        assert_eq!(types, [FocusedApplication, Idle, MouseKeyboardActivity,]);
         for mut adapter in adapters {
             assert!(ids.insert(adapter.id()));
             let (output, _receiver) = mpsc::channel(1);
